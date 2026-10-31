@@ -6,13 +6,13 @@ import type { SortingState, ColumnSizingState, ColumnFiltersState } from '@tanst
 import { eventKinds, type CatalogResponse, type CatalogQuery, type HistoryResponse, type HistoryFilters, type LibraryEvent } from '../shared/catalog';
 import { emptyHistorySelection, isCalendarDate, type HistorySelection } from './historyFilters';
 
-const accessKey = 'music-shelf.access-code';
-function rememberedCode() { try { return localStorage.getItem(accessKey) ?? ''; } catch { return ''; } }
-const auth = createSlice({ name: 'auth', initialState: { authenticated: Boolean(rememberedCode()), checking: false, error: '' }, reducers: {
+// Retire the previous shared-code credential; preferences remain untouched.
+try { localStorage.removeItem('music-shelf.access-code'); } catch {}
+const auth = createSlice({ name: 'auth', initialState: { authenticated: false, bootstrapping: true, checking: false, email: '', error: '' }, reducers: {
   checking(state) { state.checking = true; state.error = ''; },
-  authenticated(state) { state.authenticated = true; state.checking = false; state.error = ''; },
-  failed(state, action: PayloadAction<string>) { state.checking = false; state.error = action.payload; },
-  loggedOut(state) { state.authenticated = false; state.checking = false; state.error = ''; },
+  authenticated(state, action: PayloadAction<string>) { state.authenticated = true; state.bootstrapping = false; state.checking = false; state.email = action.payload; state.error = ''; },
+  failed(state, action: PayloadAction<string>) { state.checking = false; state.bootstrapping = false; state.error = action.payload; },
+  loggedOut(state) { state.authenticated = false; state.bootstrapping = false; state.checking = false; state.email = ''; state.error = ''; },
 } });
 export type ThemeChoice = 'light' | 'system' | 'dark';
 export const columnIds = ['status', 'title', 'artist', 'year', 'sampleRate', 'bitDepth', 'sizeBytes'];
@@ -58,10 +58,10 @@ const history = createSlice({ name: 'history', initialState: { generation: '', e
     state.total = action.payload.page.total; state.nextCursor = action.payload.page.nextCursor; state.loaded = true;
   },
 } });
-const rawQuery = fetchBaseQuery({ baseUrl: '/api', prepareHeaders(headers) { const code = rememberedCode(); if (code) headers.set('X-Access-Code', code); return headers; } });
+const rawQuery = fetchBaseQuery({ baseUrl: '/api', credentials: 'same-origin' });
 const guardedQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = async (args, api, extra) => {
   const result = await rawQuery(args, api, extra);
-  if (result.error?.status === 401) { try { localStorage.removeItem(accessKey); } catch {} api.dispatch(auth.actions.loggedOut()); }
+  if (result.error?.status === 401) api.dispatch(auth.actions.loggedOut());
   return result;
 };
 export const libraryApi = createApi({ reducerPath: 'libraryApi', baseQuery: guardedQuery, endpoints: builder => ({
@@ -88,15 +88,39 @@ export const useAppSelector = useSelector.withTypes<RootState>();
 export const uiActions = ui.actions;
 export const historyActions = history.actions;
 export const { useCatalogQuery, useLazyHistoryQuery } = libraryApi;
-export function signOut(): AppThunk { return dispatch => { try { localStorage.removeItem(accessKey); } catch {} dispatch(auth.actions.loggedOut()); dispatch(libraryApi.util.resetApiState()); dispatch(ui.actions.setDetails(null)); }; }
-export function signIn(code: string): AppThunk<Promise<boolean>> {
+async function authRequest(path: string, body?: unknown) {
+  const response = await fetch(`/api/auth/${path}`, { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error ?? 'Unable to sign in. Please try again.');
+  return result;
+}
+export async function requestLoginCode(email: string): Promise<{ challengeId: string; expiresIn: number; resendAfter: number }> {
+  return authRequest('request-code', { email });
+}
+export function restoreSession(): AppThunk<Promise<void>> {
+  return async dispatch => {
+    try {
+      const response = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok) { dispatch(auth.actions.loggedOut()); return; }
+      const session = await response.json(); dispatch(auth.actions.authenticated(session.email));
+    } catch { dispatch(auth.actions.loggedOut()); }
+  };
+}
+export function signOut(): AppThunk<Promise<void>> {
   return async dispatch => {
     dispatch(auth.actions.checking());
     try {
-      const response = await fetch('/api/session', { headers: { 'X-Access-Code': code }, cache: 'no-store' });
-      if (!response.ok) throw new Error(response.status === 429 ? 'Too many attempts. Try again in a minute.' : response.status === 401 ? 'Incorrect access code.' : 'Server unavailable. Please try again.');
-      try { localStorage.setItem(accessKey, code); } catch { throw new Error('Allow site storage in this browser to sign in.'); }
-      dispatch(libraryApi.util.resetApiState()); dispatch(auth.actions.authenticated()); return true;
+      await authRequest('logout'); dispatch(auth.actions.loggedOut()); dispatch(libraryApi.util.resetApiState()); dispatch(ui.actions.setDetails(null));
+    } catch { dispatch(auth.actions.failed('Unable to sign out. Please try again.')); }
+  };
+}
+export function signIn(challengeId: string, code: string): AppThunk<Promise<boolean>> {
+  return async dispatch => {
+    dispatch(auth.actions.checking());
+    try {
+      const session = await authRequest('verify-code', { challengeId, code });
+      dispatch(libraryApi.util.resetApiState()); dispatch(auth.actions.authenticated(session.email)); return true;
     } catch (error) { dispatch(auth.actions.failed(error instanceof Error ? error.message : 'Unable to sign in.')); return false; }
   };
 }
+void store.dispatch(restoreSession());

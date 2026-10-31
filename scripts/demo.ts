@@ -21,4 +21,4 @@ const store = new CatalogStore(database);
 const snapshot: Snapshot = { generatedAt: new Date(now).toISOString(), tracks };
 store.import(snapshot); store.close();
 console.log(`Created ${count} fictional tracks in the isolated demo database. No audio files exist.`);
-console.log('Start with SHELF_DB_PATH pointing to this database, SHELF_DEMO_MODE=1 and your own SHELF_ACCESS_CODE.');
+console.log('Start with SHELF_DB_PATH pointing to this database, SHELF_DEMO_MODE=1 and your private email-provider configuration.');

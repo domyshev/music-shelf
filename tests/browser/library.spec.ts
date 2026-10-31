@@ -10,9 +10,16 @@ test.beforeEach(async ({ page }) => {
     return route.fulfill({ json: { generatedAt: '2026-01-01T12:00:00.000Z', tracks: matching.slice((page - 1) * pageSize, page * pageSize), stats: { total: 5000, ready: 0, pending: 5000, sizeBytes: 0 }, pagination: { page, pageSize, total: matching.length, pages: Math.ceil(matching.length / pageSize) }, facets: { status: ['pending'], artist: [...new Set(tracks.map(track => track.artist))], year: ['1960'] } } });
   });
   await page.route('**/api/history?*', route => route.fulfill({ json: { total: 2, events: [{ id: 2, trackId: 'fixture-2', title: 'Newer fictional song', artist: 'Demo Artist', kind: 'downloaded', occurredAt: '2026-01-02T12:00:00.000Z', timeBasis: 'source' }, { id: 1, trackId: 'fixture-1', title: 'Older fictional song', artist: 'Demo Artist', kind: 'imported', occurredAt: '2026-01-01T12:00:00.000Z', timeBasis: 'import' }], nextCursor: null } }));
+  let authenticated = false;
+  await page.route('**/api/session', route => route.fulfill({ status: authenticated ? 200 : 401, json: authenticated ? { ok: true, email: 'test@example.invalid' } : { error: 'Sign in required' } }));
+  await page.route('**/api/auth/request-code', route => route.fulfill({ json: { ok: true, challengeId: 'x'.repeat(32), expiresIn: 600, resendAfter: 60 } }));
+  await page.route('**/api/auth/verify-code', route => { authenticated = true; return route.fulfill({ json: { ok: true, email: 'test@example.invalid' } }); });
+  await page.route('**/api/auth/logout', route => { authenticated = false; return route.fulfill({ json: { ok: true } }); });
   await page.goto('/');
-  await page.getByRole('textbox', { name: 'Access code' }).fill('test-only-ui-code');
-  await page.getByRole('button', { name: 'Open library' }).click();
+  await page.getByRole('textbox', { name: 'Email', exact: true }).fill('test@example.invalid');
+  await page.getByRole('button', { name: 'Send code', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Verification code', exact: true }).fill('123456');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('table', { name: 'Songs', exact: true })).toBeVisible();
 });
 test('virtualizes a large library, scrolls the table only, searches, sorts and retains login', async ({ page }) => {
@@ -32,7 +39,7 @@ test('virtualizes a large library, scrolls the table only, searches, sorts and r
   await expect(page.getByRole('columnheader', { name: 'Song' })).toHaveAttribute('aria-sort', 'ascending');
   await page.reload();
   await expect(page.getByRole('table', { name: 'Songs', exact: true })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Access code' })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Email', exact: true })).toHaveCount(0);
 });
 test('opens newest-first history and keeps logout inside the menu', async ({ page }) => {
   await expect(page.getByRole('menuitem', { name: 'Sign out' })).toHaveCount(0);
@@ -42,7 +49,7 @@ test('opens newest-first history and keeps logout inside the menu', async ({ pag
   await page.getByRole('button', { name: 'Close history' }).click();
   await page.getByRole('button', { name: 'Open menu' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(page.getByRole('textbox', { name: 'Access code' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Email', exact: true })).toBeVisible();
 });
 test('fits a phone viewport without document scrolling', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

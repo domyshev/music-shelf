@@ -1,19 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { generateKeyPairSync, sign } from 'node:crypto';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../server/http.js';
+import { EmailAuth } from '../server/auth.js';
 import { CatalogStore } from '../server/store.js';
 
 const pending = { id: 'demo', title: 'Synthetic title', artist: 'Demo artist', album: '', year: 1968, status: 'pending', file: null };
 test('HTTP authentication, signed imports, replay handling and cursor validation', async () => {
   const store = new CatalogStore(':memory:'); const keys = generateKeyPairSync('ed25519');
   const clock = Date.now(); const timestamp = String(Math.floor(clock / 1000));
-  const app = createApp({ store, accessHash: createHash('sha256').update('test-only-access').digest(), publisherKey: keys.publicKey, now: () => clock, clientDirectory: '/nonexistent-test-client' });
+  const auth = new EmailAuth(':memory:', Buffer.alloc(32, 3));
+  const challenge = auth.issue('test@example.invalid', 'test'); auth.delivered(challenge.challengeId); const session = auth.verify(challenge.challengeId, challenge.code);
+  const app = createApp({ store, auth, mailer: { async send() {} }, origin: 'http://test.invalid', publisherKey: keys.publicKey, now: () => clock, clientDirectory: '/nonexistent-test-client' });
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const headers = { 'X-Access-Code': 'test-only-access' };
+  const headers = { Cookie: 'music-shelf-session=' + session.token };
   const signed = (payload: unknown, bodyTimestamp = timestamp) => {
     const body = JSON.stringify(payload);
     return { method: 'POST', body, headers: { 'Content-Type': 'application/json', 'X-Shelf-Timestamp': bodyTimestamp, 'X-Shelf-Signature': sign(null, Buffer.from(bodyTimestamp + '\n' + body), keys.privateKey).toString('base64') } };
@@ -43,8 +46,5 @@ test('HTTP authentication, signed imports, replay handling and cursor validation
     assert.equal((await fetch(base + '/api/history?kind=unknown', { headers })).status, 400);
     assert.equal((await fetch(base + '/api/history?from=2026-02-30', { headers })).status, 400);
     assert.equal((await fetch(base + '/api/history?from=2026-01-02T00:00:00Z&to=2026-01-01T00:00:00Z', { headers })).status, 400);
-    for (let index = 0; index < 21; index++) await fetch(base + '/api/session');
-    assert.equal((await fetch(base + '/api/session')).status, 429);
-    assert.equal((await fetch(base + '/api/session', { headers })).status, 200);
-  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); store.close(); }
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); store.close(); auth.close(); }
 });

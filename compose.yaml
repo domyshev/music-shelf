@@ -5,7 +5,9 @@ services:
     ports:
       - '127.0.0.1:8080:8080'
     environment:
-      SHELF_ACCESS_CODE: ${SHELF_ACCESS_CODE:?Set a private access code in .env}
+      SHELF_ORIGIN: ${SHELF_ORIGIN:?Set the exact public HTTPS origin}
+      RESEND_API_KEY: ${RESEND_API_KEY:?Set a private Resend API key}
+      EMAIL_FROM: ${EMAIL_FROM:?Set a verified sender address}
     volumes:
       - shelf-data:/data
     read_only: true

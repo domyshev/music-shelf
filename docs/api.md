@@ -1,7 +1,7 @@
 # Catalog API
 
-All endpoints are same-origin. Responses use JSON. Reading requires
-`X-Access-Code: <owner-selected code>`. Publishing uses a separate signature.
+All endpoints are same-origin. Responses use JSON. Reading requires an authenticated session cookie. Publishing uses a separate
+signature.
 No endpoint accepts audio or private file paths.
 
 ## Read endpoints
@@ -16,9 +16,8 @@ No endpoint accepts audio or private file paths.
 History limits range from 1 to 500. Treat `nextCursor` as opaque, URL-encode it
 and stop when null. Keyset pagination avoids shifting earlier pages when new
 events arrive. Reopen history from the first page to see new or corrected events.
-Invalid pagination returns 400. Authentication failures return 401, or 429 after
-repeated failures. Valid credentials remain usable during throttling. Throttling
-uses the direct peer IP.
+Invalid pagination returns 400. Unauthenticated reads return 401. Email-code request throttling returns 429
+with Retry-After; its network limit uses the direct peer IP.
 
 ## Publish a snapshot
 
@@ -153,3 +152,24 @@ sorted unique choices from the entire catalog. `stats` continues to describe the
 whole library. Search, filters, sorting and limiting run in SQLite before rows
 are returned. No audio or private file paths are included. Existing browser
 column filters continue to persist even though their execution is server-side.
+
+## Email-code authentication
+
+All authentication POSTs require an `Origin` header equal to `SHELF_ORIGIN`.
+Bodies are strict JSON up to 8 KiB. Cross-origin requests return 403.
+
+- `POST /api/auth/request-code` with `{ email }` sends a six-digit code and returns
+  `{ ok, challengeId, expiresIn: 600, resendAfter: 60 }`. No code is returned.
+- `POST /api/auth/verify-code` with `{ challengeId, code }` consumes a delivered
+  code and returns `{ ok, email }`, setting an HttpOnly, SameSite=Lax session cookie.
+  HTTPS uses the Secure, host-only `__Host-music-shelf-session` cookie.
+- `GET /api/session` returns `{ ok, email }` for the current session, or 401.
+- `POST /api/auth/logout` revokes the session and clears its cookie.
+
+Codes expire after 10 minutes and lock after five failed attempts. A new delivered
+code replaces older challenges for the email. Rate limits persist across restart:
+one request/minute and five/hour per email, 30/hour per direct peer IP, 100/day
+for the app. Verification creates a new random session, valid for 30 days. Provider
+errors are generic and contain no credentials or provider response bodies.
+The old X-Access-Code header has no effect. Signed imports are unchanged and do
+not require browser cookies or Origin authentication.

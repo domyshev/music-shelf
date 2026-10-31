@@ -24,7 +24,7 @@ Use Node.js 24 or newer and npm. SQLite uses the built-in `node:sqlite` module.
 ```sh
 npm ci
 cp .env.example .env
-# Edit .env and choose your own SHELF_ACCESS_CODE.
+# Edit .env and configure your Resend API key and verified sender.
 npm run dev
 ```
 
@@ -54,23 +54,35 @@ environment variables take precedence.
 
 | Variable | Purpose |
 | --- | --- |
-| `SHELF_ACCESS_CODE` | Owner-selected shared code; required unless a verifier file is configured. |
-| `SHELF_ACCESS_HASH_FILE` | Alternative file containing the lowercase hexadecimal SHA-256 digest of the code. Configure exactly one authentication option. |
+| `RESEND_API_KEY` | Private Resend API key, required for production delivery. |
+| `EMAIL_FROM` | Verified sender address, required in production. |
+| `SHELF_ORIGIN` | Exact browser origin for authentication requests. Use the Vite origin in development and HTTPS in production. |
+| `SHELF_AUTH_SECRET_FILE` | Optional private file containing 64 random hexadecimal characters for code hashing. Defaults to a generated `auth.secret` beside SQLite. |
 | `SHELF_DB_PATH` | Persistent SQLite database path. |
 | `SHELF_PUBLISHER_PUBLIC_KEY_FILE` | PEM Ed25519 public key enabling signed imports. Without it, publishing is disabled. |
 | `SHELF_DEMO_MODE` | Set to `1` for synthetic catalogs to show a visible demo label. Never enable for the real library. |
 | `HOST`, `PORT` | Bind address and port. Defaults: `127.0.0.1`, `4174`. |
 
-The browser remembers the access code in local storage until logout or browser
-storage removal. It is sent in a header, never a URL or Redux state. Use HTTPS
-for network access. This shared code does not provide individual user accounts.
+Sign-in uses a six-digit email code, valid for 10 minutes with at most five
+verification attempts. Request limits prevent repeated delivery to the same
+address and bound overall email use. Codes are stored only as keyed hashes.
+After verification, a random session is kept for 30 days in an HttpOnly,
+SameSite=Lax cookie (Secure on HTTPS). Only session hashes are stored in SQLite;
+neither codes nor session tokens enter Redux or local storage. Logout revokes the
+session. Shared access codes are no longer accepted. Anyone who can verify their
+email can access this shared catalog; this is not an email allowlist.
+
+Set `SHELF_ORIGIN=http://127.0.0.1:4174` when serving a local production build,
+or to your public HTTPS origin when deployed. Without a configured email
+provider, local code requests fail closed. Never log codes for development.
+
 Stop the server before copying SQLite for a simple consistent backup, or use a
 SQLite-aware backup tool.
 
 ## Container
 
 ```sh
-# Set SHELF_ACCESS_CODE in the untracked .env first.
+# Set the origin and private email-provider configuration in .env first.
 docker compose up --build -d
 ```
 
@@ -108,7 +120,7 @@ npm test
 npm run build
 ```
 
-Node tests cover signed imports, access control, validation, idempotence,
+Node tests cover signed imports, email-code/session authentication, origin validation, delivery throttling, validation, idempotence,
 snapshot ordering, durable events, timestamp handling and pagination.
 Optional browser regression specifications use synthetic API responses:
 
@@ -117,7 +129,7 @@ npx playwright install chromium
 npm run test:ui
 ```
 
-At initial implementation, type checking, production build and all eight Node
+At initial implementation, type checking, production build and all eleven Node
 tests passed. The production preview was manually checked with 3,000 synthetic
 records at desktop and phone widths. The automated Playwright specifications
 have not yet been executed.
