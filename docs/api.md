@@ -1,0 +1,155 @@
+# Catalog API
+
+All endpoints are same-origin. Responses use JSON. Reading requires
+`X-Access-Code: <owner-selected code>`. Publishing uses a separate signature.
+No endpoint accepts audio or private file paths.
+
+## Read endpoints
+
+| Endpoint | Response |
+| --- | --- |
+| `GET /healthz` | Public `{ "ok": true }` liveness response. |
+| `GET /api/session` | Authenticated `{ "ok": true }`. |
+| `GET /api/catalog` | `{ generatedAt, tracks, stats: { total, ready, pending, sizeBytes } }`. |
+| `GET /api/history?limit=100&cursor=...` | `{ events, nextCursor, total }`, newest first by timestamp and ID. |
+
+History limits range from 1 to 500. Treat `nextCursor` as opaque, URL-encode it
+and stop when null. Keyset pagination avoids shifting earlier pages when new
+events arrive. Reopen history from the first page to see new or corrected events.
+Invalid pagination returns 400. Authentication failures return 401, or 429 after
+repeated failures. Valid credentials remain usable during throttling. Throttling
+uses the direct peer IP.
+
+## Publish a snapshot
+
+`POST /api/import` accepts a full JSON snapshot, up to 8 MiB and 10,000 tracks.
+Configure the server with the publisher's PEM Ed25519 public key. The matching
+private key belongs exclusively in the publisher's private configuration.
+
+```text
+Content-Type: application/json
+X-Shelf-Timestamp: <Unix timestamp in seconds>
+X-Shelf-Signature: <base64 Ed25519 signature>
+```
+
+Sign the ASCII timestamp, one newline byte, then the exact UTF-8 JSON body bytes.
+Do not reserialize after signing. The request timestamp must be within five
+minutes of the server clock. An external Node publisher can construct it as:
+
+```js
+import { sign } from 'node:crypto';
+// privateKey is supplied by the publisher's private runtime configuration.
+const body = Buffer.from(JSON.stringify(snapshot));
+const timestamp = String(Math.floor(Date.now() / 1000));
+const signature = sign(null, Buffer.concat([
+  Buffer.from(timestamp + '\n'), body,
+]), privateKey).toString('base64');
+// Send body unchanged with the three headers to your configured server.
+```
+
+Response: `{ ok: true, tracks: number, duplicate: boolean, eventsAdded: number }`.
+An exact retry succeeds with `duplicate: true`. Older snapshots and changed
+content at the current timestamp return 409. Use a strictly newer `generatedAt`
+for changed metadata. Snapshot timestamps over five minutes in the future are
+rejected. Invalid content/timestamps return 400, invalid signatures 403, oversized
+bodies 413, and an unconfigured publisher 503.
+
+A snapshot replaces the current catalog in one transaction. Omitted tracks
+leave the catalog, but their events remain.
+
+## Snapshot schema
+
+The authoritative strict schema is [shared/catalog.ts](../shared/catalog.ts).
+Unknown fields are rejected, including source URLs and server paths.
+
+| Field | Type and meaning |
+| --- | --- |
+| `generatedAt` | ISO timestamp with timezone; normalized to UTC. |
+| `tracks` | Array with unique, stable IDs. |
+| `tracks[].id` | Nonempty identifier, up to 200 characters. |
+| `title`, `artist` | Nonempty strings, up to 1,000 characters. |
+| `album` | String, up to 1,000 characters; defaults to empty. |
+| `year` | Original song year, integer 1800–2200, or null. |
+| `status` | `ready` or `pending`. |
+| `file` | Required object for ready tracks; null for pending tracks. |
+| `queuedAt` | Optional source queue-entry timestamp or null; cannot follow `generatedAt`. |
+| `completedAt` | Optional source completion timestamp or null; cannot follow `generatedAt`. |
+
+Required file properties:
+
+| Field | Type and meaning |
+| --- | --- |
+| `name` | Basename up to 512 characters; no path separators/control characters. |
+| `sizeBytes` | Positive integer. |
+| `sha256` | Lowercase 64-character hexadecimal SHA-256 of actual file bytes. |
+| `format`, `codec` | Nonempty strings, up to 30 and 50 characters. |
+| `sampleRate` | Positive integer, Hz. |
+| `bitDepth` | Integer 0–64; 0 denotes unknown/non-applicable. |
+| `channels` | Integer 1–64. |
+| `durationSeconds` | Nonnegative number. |
+| `bitrateBps` | Nonnegative integer; 0 denotes unknown. |
+
+Measured properties should come from the actual file. Pending rows display
+unknown properties as dashes. The public example's file values are fabricated.
+
+## Event semantics
+
+Events contain `id`, `trackId`, `title`, `artist`, `kind`, `occurredAt` and
+`timeBasis`. Titles and artists are preserved when the event is created.
+
+| Kind | Meaning |
+| --- | --- |
+| `queued` | First observation in the queue, or a supplied source queue timestamp. |
+| `downloaded` | First completion with a source time, or newly observed ready status. |
+| `imported` | Initial ready file without a known completion time. |
+| `file_updated` | A ready track's checksum changed. |
+| `unavailable` | A ready track became pending. |
+| `restored` | A pending track became ready with an already known checksum. |
+
+`timeBasis` is `source`, `observed` or `import`. Observed/import events use the
+snapshot timestamp. A source completion time arriving later can correct an
+initial import event in place. Identical file observations are deduplicated by
+track ID and checksum. Changed checksums use the new observation time even when
+an old completion date remains in the incoming metadata.
+
+The API records metadata transitions. The private collector is responsible for
+checking files on the actual music server.
+
+Queue entries are deduplicated by stable track ID. A later source `queuedAt`
+corrects an observed queue date in place. Distinct retry attempts require distinct
+track IDs if they should appear as separate queue events. Initial ready files
+only get a queue event when a source queue date is provided; no earlier queue
+date is invented. `total` counts all persisted events, independently of the page.
+
+## History filters
+
+`GET /api/history` accepts `kind`, `from` and `to` alongside `limit` and `cursor`.
+`kind` is a comma-separated list of event kinds (OR within the list); omitting it
+includes every kind. `from` is an inclusive ISO timestamp with timezone, and `to`
+is an exclusive one. They are combined with the event condition using AND.
+Malformed kinds, timestamps and reversed/empty intervals return 400.
+
+Filtering happens in SQLite before pagination. `total` counts all matching
+records, independent of cursor and page size. Supply identical filters with each
+cursor request. Changing a filter requires restarting without a cursor. Browser
+calendar ranges are converted from local inclusive days to these UTC boundaries.
+
+## Catalog pagination, search and filters
+
+`GET /api/catalog` returns one page (100 rows by default). Query parameters:
+
+- `page`: one-based page number; `pageSize`: 1–250 rows.
+- `q`: case/diacritic-insensitive substring search across title, artist, album,
+  original year and status. Literal punctuation is not interpreted as SQL syntax.
+- `sort`: `position`, `status`, `title`, `artist`, `year`, `sampleRate`, `bitDepth`
+  or `sizeBytes`; `direction`: `asc` or `desc`. Unknown properties sort last.
+- `filters`: URL-encoded JSON object with optional `status`, `artist`, `year`
+  arrays. Values match exactly, OR within each column and AND between columns.
+  Year values are strings; an empty string selects an unknown year.
+
+The response includes `pagination: { page, pageSize, total, pages }`, where total
+counts all matching tracks, and `facets: { status, artist, year }`, containing
+sorted unique choices from the entire catalog. `stats` continues to describe the
+whole library. Search, filters, sorting and limiting run in SQLite before rows
+are returned. No audio or private file paths are included. Existing browser
+column filters continue to persist even though their execution is server-side.

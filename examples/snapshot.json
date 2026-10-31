@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-01-01T12:00:00.000Z",
+  "tracks": [
+    {
+      "id": "fictional-001",
+      "title": "Paper Moons",
+      "artist": "Fictional Ensemble",
+      "album": "Synthetic Sessions",
+      "year": 1967,
+      "status": "ready",
+      "completedAt": "2026-01-01T11:55:00.000Z",
+      "file": {
+        "name": "fictional-001.flac",
+        "sizeBytes": 24000000,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "format": "flac",
+        "codec": "flac",
+        "sampleRate": 44100,
+        "bitDepth": 16,
+        "channels": 2,
+        "durationSeconds": 240,
+        "bitrateBps": 800000
+      }
+    },
+    {
+      "id": "fictional-002",
+      "title": "Quiet Harbour",
+      "artist": "Fictional Ensemble",
+      "album": "Synthetic Sessions",
+      "year": null,
+      "status": "pending",
+      "file": null
+    }
+  ]
+}
