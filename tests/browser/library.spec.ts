@@ -16,13 +16,15 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('table', { name: 'Songs', exact: true })).toBeVisible();
 });
 test('virtualizes a large library, scrolls the table only, searches, sorts and retains login', async ({ page }) => {
+  await page.getByRole('combobox').click();
+  await page.getByRole('option', { name: '250', exact: true }).click();
   expect(await page.getByTestId('track-row').count()).toBeLessThan(100);
   const scroll = page.getByTestId('library-scroll');
   await scroll.hover(); await page.mouse.wheel(0, 500000);
-  await expect(page.getByRole('button', { name: 'Fictional song 0099', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Fictional song 0249', exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   await page.getByRole('button', { name: 'Go to next page' }).click();
-  await expect(page.getByRole('button', { name: 'Fictional song 0100', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Fictional song 0250', exact: true })).toBeVisible();
   await page.getByPlaceholder('Search songs, artists and albums').fill('Fictional song 0123');
   await expect(page.getByTestId('track-row')).toHaveCount(1);
   await page.getByRole('button', { name: 'Clear search' }).click();

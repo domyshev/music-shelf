@@ -5,7 +5,7 @@ implementation using React, TypeScript, Material UI, Redux Toolkit, TanStack
 Table and TanStack Virtual. The interface uses English labels.
 
 The viewport contains a compact wordmark, search, counters and an independently
-scrolling table. Columns show status, song, artist, year, sample rate, bit depth
+scrolling table. The browser initially requests 25 songs per page. Columns show status, song, artist, year, sample rate, bit depth
 and file size. Song titles open file details, including the checksum. Columns can be resized and reordered with their hover handles; these preferences and the column filters
 are persisted from Redux to local storage. Status, artist and year support sorted multi-select filters
 processed on the server before pagination. Light, system and dark themes are available in the menu.
