@@ -5,6 +5,7 @@ import AlbumOutlined from '@mui/icons-material/AlbumOutlined';
 import { Status } from './Status';
 import type { Track } from '../../shared/catalog';
 import { formatSize } from '../format';
+import { EntityLink } from './EntityLink';
 
 export function TrackDetails({ track, onClose }: { track?: Track; onClose: () => void }) {
   const file = track?.file;
@@ -14,13 +15,13 @@ export function TrackDetails({ track, onClose }: { track?: Track; onClose: () =>
       </Box><IconButton aria-label="Close details" onClick={onClose} sx={{ position: 'absolute', right: 12, top: 12 }}><CloseRounded fontSize="small" /></IconButton></DialogTitle>
     <DialogContent>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+        <Box className="track-metadata-row" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <GroupsOutlined sx={{ fontSize: 17, color: 'text.secondary', flexShrink: 0 }} />
-          <Typography aria-label={`Artist: ${track?.artist ?? ''}`} sx={{ fontSize: 16, overflowWrap: 'anywhere' }}>{track?.artist}</Typography>
+          <Box sx={{ minWidth: 0, fontSize: 16, lineHeight: 1.5 }}>{track && <EntityLink kind="artist" name={track.artist} preview />}</Box>
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+        <Box className="track-metadata-row" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <AlbumOutlined sx={{ fontSize: 17, color: 'text.secondary', flexShrink: 0 }} />
-          <Typography aria-label={`Album: ${track?.album || 'Album unknown'}`} color="text.secondary" sx={{ fontSize: 16, overflowWrap: 'anywhere' }}>{track?.album || 'Album unknown'}</Typography>
+          <Box sx={{ minWidth: 0, fontSize: 16, lineHeight: 1.5, color: 'text.secondary' }}>{track?.album ? <EntityLink kind="album" name={track.album} preview /> : <Typography sx={{ fontSize: 'inherit', lineHeight: 'inherit' }}>Album unknown</Typography>}</Box>
         </Box>
       </Box>
       {file && <Box component="dl" className="file-details">{[

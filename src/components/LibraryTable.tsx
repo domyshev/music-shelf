@@ -8,6 +8,7 @@ import { uiActions, useAppDispatch, useAppSelector } from '../store';
 import { formatRate, formatSize } from '../format';
 import { Status } from './Status';
 import { OverflowTooltip } from './OverflowTooltip';
+import { EntityLink } from './EntityLink';
 
 const helper = createColumnHelper<Track>();
 const filterIds = new Set(['status', 'artist', 'year']);
@@ -22,7 +23,7 @@ export function LibraryTable({ tracks, total, facets }: { tracks: Track[]; total
   const columns = useMemo(() => [
     helper.accessor('status', { header: 'Status', size: 108, cell: info => <Status value={info.getValue()} /> }),
     helper.accessor('title', { header: 'Song', size: 350, minSize: 120, cell: info => <OverflowTooltip text={info.getValue()}><ButtonBase className="song-name" onClick={() => dispatch(uiActions.setDetails(info.row.original.id))}>{info.getValue()}</ButtonBase></OverflowTooltip> }),
-    helper.accessor('artist', { header: 'Artist / band', size: 250, cell: info => <OverflowTooltip text={info.getValue()} /> }),
+    helper.accessor('artist', { header: 'Artist / band', size: 250, cell: info => <OverflowTooltip text={info.getValue()}><EntityLink kind="artist" name={info.getValue()} ellipsis /></OverflowTooltip> }),
     helper.accessor('year', { header: 'Year', size: 112, cell: info => info.getValue() ?? '—' }),
     helper.accessor(row => row.file?.sampleRate ?? undefined, { id: 'sampleRate', header: 'kHz', size: 82, sortUndefined: 'last', cell: info => formatRate(info.getValue()) }),
     helper.accessor(row => row.file?.bitDepth || undefined, { id: 'bitDepth', header: 'Bits', size: 72, sortUndefined: 'last', cell: info => info.getValue() ?? '—' }),

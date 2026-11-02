@@ -13,6 +13,11 @@ A separate
 history popover shows durable events newest first. Logout lives in the header
 menu. Both tables virtualize rows.
 
+Artist names in the songs table open a name card when clicked. In song details,
+artist and album names show arrowed card previews on hover or keyboard focus;
+clicking opens a persistent card. Names underline on hover without changing
+their color. Cards currently display the supplied name only.
+
 Music Shelf serves metadata only: it does not play, serve or download audio.
 An external publisher supplies full library snapshots through a signed API.
 The Node server stores the current catalog and history in SQLite.

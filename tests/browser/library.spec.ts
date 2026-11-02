@@ -57,3 +57,49 @@ test('fits a phone viewport without document scrolling', async ({ page }) => {
   expect(documentFits).toBe(true);
   await expect(page.getByTestId('library-scroll')).toBeVisible();
 });
+
+test('artist links keep their color, underline on hover and open an accessible card', async ({ page }) => {
+  const artist = page.getByRole('button', { name: 'Artist / band: Demo Artist 0', exact: true }).first();
+  const color = await artist.evaluate(element => getComputedStyle(element).color);
+  await artist.hover();
+  await expect(artist).toHaveCSS('text-decoration-line', 'underline');
+  await expect(artist).toHaveCSS('color', color);
+  await artist.click();
+  const card = page.getByRole('dialog', { name: 'Artist / band: Demo Artist 0', exact: true });
+  await expect(card).toContainText('Demo Artist 0');
+  await card.getByRole('button', { name: 'Close artist card' }).click();
+  await expect(card).toHaveCount(0);
+});
+
+test('song metadata aligns icons with names and previews artist and album cards with arrows', async ({ page }) => {
+  await page.getByRole('button', { name: 'Fictional song 0000', exact: true }).click();
+  const song = page.getByRole('dialog');
+  for (const row of await song.locator('.track-metadata-row').all()) {
+    const centers = await row.evaluate(element => {
+      const icon = element.querySelector('svg')!.getBoundingClientRect();
+      const label = element.querySelector('button')!.getBoundingClientRect();
+      return { icon: icon.y + icon.height / 2, label: label.y + label.height / 2 };
+    });
+    expect(Math.abs(centers.icon - centers.label)).toBeLessThanOrEqual(1);
+  }
+  const artist = song.getByRole('button', { name: 'Artist / band: Demo Artist 0', exact: true });
+  await artist.hover();
+  const preview = page.getByRole('tooltip');
+  await expect(preview).toContainText('Demo Artist 0');
+  await expect(preview.locator('.MuiTooltip-arrow')).toHaveCount(1);
+  await preview.hover();
+  await expect(preview).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(preview).toHaveCount(0);
+  const album = song.getByRole('button', { name: 'Album: Synthetic album', exact: true });
+  const color = await album.evaluate(element => getComputedStyle(element).color);
+  await album.hover();
+  await expect(album).toHaveCSS('text-decoration-line', 'underline');
+  await expect(album).toHaveCSS('color', color);
+  await expect(page.getByRole('tooltip')).toContainText('Synthetic album');
+  await album.click();
+  const card = page.getByRole('dialog', { name: 'Album: Synthetic album', exact: true });
+  await expect(card).toContainText('Synthetic album');
+  await card.getByRole('button', { name: 'Close album card' }).click();
+  await expect(song).toBeVisible();
+});
