@@ -17,7 +17,7 @@ import { TrackDetails } from './components/TrackDetails';
 import { AiDrawer } from './components/AiDrawer';
 import AutoAwesomeOutlined from '@mui/icons-material/AutoAwesomeOutlined';
 
-function Wordmark() { return <Typography component="span" className="wordmark">music shelf<span>•</span></Typography>; }
+function Wordmark() { return <Typography component="span" className="wordmark">music shelf<img src="/music-shelf.svg" alt="" aria-hidden="true" className="wordmark-icon" /></Typography>; }
 function Login() {
   const dispatch = useAppDispatch();
   const { checking, error } = useAppSelector(state => state.auth);

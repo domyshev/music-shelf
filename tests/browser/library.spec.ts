@@ -134,3 +134,15 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
   await page.getByRole('button',{name:'Back to chat'}).click();await page.getByLabel('Message AI').fill('Hello');await page.getByRole('button',{name:'Send',exact:true}).click();await expect(page.getByText('A demo reply')).toBeVisible();
   await page.reload();await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('menuitem',{name:'AI assistant'}).click();await expect(page.getByText('Hello',{exact:true})).toBeVisible();await expect(page.getByText('A demo reply')).toBeVisible();
 });
+
+test('uses the turntable mark and blue-red themes', async ({ page }) => {
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href','/music-shelf.svg');
+  const icon=page.locator('.app-header .wordmark-icon');await expect(icon).toBeVisible();
+  expect(await icon.evaluate((image: HTMLImageElement)=>image.naturalWidth)).toBeGreaterThan(0);
+  await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('button',{name:'Light theme'}).click();await page.keyboard.press('Escape');
+  await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(243, 246, 252)');
+  await page.screenshot({path:'/tmp/music-shelf-light-024.png'});
+  await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('button',{name:'Dark theme'}).click();await page.keyboard.press('Escape');
+  await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(16, 23, 38)');
+  await page.screenshot({path:'/tmp/music-shelf-dark-024.png'});
+});
