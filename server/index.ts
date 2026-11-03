@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { createApp } from './http.js';
 import { EmailAuth, resendMailer } from './auth.js';
 import { CatalogStore } from './store.js';
+import { Features } from './features.js';
 
 process.umask(0o077);
 if (existsSync('.env')) process.loadEnvFile('.env');
@@ -15,6 +16,7 @@ if (!existsSync(secretPath) && !process.env.SHELF_AUTH_SECRET_FILE) writeFileSyn
 const secret = readFileSync(secretPath, 'utf8').trim();
 if (!/^[a-f0-9]{64}$/.test(secret)) throw new Error('Authentication secret must contain 64 hexadecimal characters');
 const auth = new EmailAuth(database, Buffer.from(secret, 'hex'));
+const features = new Features(database, Buffer.from(secret, 'hex'));
 const origin = new URL(process.env.SHELF_ORIGIN ?? 'http://127.0.0.1:4174').origin;
 const configured = Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
 if (!configured && process.env.NODE_ENV === 'production') throw new Error('Production requires RESEND_API_KEY and EMAIL_FROM');
@@ -24,6 +26,6 @@ const publisherKey = keyFile ? createPublicKey(readFileSync(keyFile)) : undefine
 if (publisherKey && publisherKey.asymmetricKeyType !== 'ed25519') throw new Error('Publisher key must use Ed25519');
 const port = Number(process.env.PORT ?? 4174);
 const host = process.env.HOST ?? '127.0.0.1';
-const server = createApp({ demo: process.env.SHELF_DEMO_MODE === '1', store, auth, mailer, origin, secureCookies: origin.startsWith('https:'), publisherKey }).listen(port, host, () => console.log(`Music Shelf listening on ${host}:${port}`));
-function stop() { server.close(() => { store.close(); auth.close(); process.exit(0); }); }
+const server = createApp({ features, demo: process.env.SHELF_DEMO_MODE === '1', store, auth, mailer, origin, secureCookies: origin.startsWith('https:'), publisherKey }).listen(port, host, () => console.log(`Music Shelf listening on ${host}:${port}`));
+function stop() { server.close(() => { store.close(); auth.close(); features.close(); process.exit(0); }); }
 process.on('SIGINT', stop); process.on('SIGTERM', stop);

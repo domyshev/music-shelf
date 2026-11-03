@@ -6,8 +6,9 @@ import { z } from 'zod';
 import { AuthError, codeLifetime, sessionLifetime, type EmailAuth, type LoginMailer } from './auth.js';
 import { snapshotSchema, historyFilterSchema, catalogQuerySchema } from '../shared/catalog.js';
 import { CatalogStore, SnapshotConflict } from './store.js';
+import type { Features } from './features.js';
 
-export interface AppOptions { demo?: boolean; store: CatalogStore; auth: EmailAuth; mailer: LoginMailer; origin: string; secureCookies?: boolean; publisherKey?: KeyObject; clientDirectory?: string; now?: () => number }
+export interface AppOptions { features?: Features; demo?: boolean; store: CatalogStore; auth: EmailAuth; mailer: LoginMailer; origin: string; secureCookies?: boolean; publisherKey?: KeyObject; clientDirectory?: string; now?: () => number }
 export function createApp(options: AppOptions) {
   const app = express();
   const now = options.now ?? Date.now;
@@ -62,6 +63,31 @@ export function createApp(options: AppOptions) {
   });
   app.post('/api/auth/logout', sameOrigin, (request, response) => {
     options.auth.logout(token(request)); response.clearCookie(cookieName, cookieOptions); response.json({ ok: true });
+  });
+  app.get('/api/tracks/:id/text', authorize, (request, response) => {
+    const data = options.features?.lyrics(String(request.params.id),response.locals.email); if (!data) { response.status(404).json({ error: 'Song not found' }); return; } response.json(data);
+  });
+  app.put('/api/tracks/:id/text', authorize, sameOrigin, express.json({limit:'128kb'}), (request, response) => {
+    const parsed = z.object({lyrics:z.string().max(50000),translation:z.string().max(50000)}).strict().safeParse(request.body);
+    if (!parsed.success) { response.status(400).json({error:'Invalid song text'}); return; }
+    if (!options.features?.saveLyrics(String(request.params.id),response.locals.email,parsed.data.lyrics,parsed.data.translation)) { response.status(404).json({error:'Song not found'}); return; }
+    response.json({ok:true});
+  });
+  app.get('/api/ai/settings', authorize, (_request, response) => response.json(options.features?.settings(response.locals.email) ?? {model:'',hasToken:false}));
+  app.put('/api/ai/settings', authorize, sameOrigin, express.json({limit:'8kb'}), (request,response) => {
+    const parsed=z.object({model:z.string().max(200),token:z.string().min(1).max(512).optional(),removeToken:z.boolean().optional()}).strict().safeParse(request.body);
+    if (!parsed.success || (parsed.data.token && parsed.data.removeToken)) { response.status(400).json({error:'Invalid settings'}); return; }
+    if (!options.features) { response.status(503).json({error:'AI unavailable'}); return; }
+    response.json(options.features.saveSettings(response.locals.email,parsed.data.model,parsed.data.token,parsed.data.removeToken));
+  });
+  app.get('/api/ai/models', authorize, async (_request,response) => {
+    try { if (!options.features) throw new Error(); response.json({models:await options.features.models()}); } catch {response.status(502).json({error:'Unable to load models from OpenRouter'});}
+  });
+  app.post('/api/ai/chat', authorize, sameOrigin, express.json({limit:'128kb'}), async (request,response) => {
+    const parsed=z.object({messages:z.array(z.object({role:z.enum(['user','assistant']),content:z.string().min(1).max(12000)}).strict()).min(1).max(30)}).strict().safeParse(request.body);
+    if (!parsed.success || parsed.data.messages.at(-1)?.role !== 'user') {response.status(400).json({error:'Invalid chat'});return;}
+    try { const reply=await options.features?.chat(response.locals.email,parsed.data.messages); if (reply == null) {response.status(400).json({error:'Set an OpenRouter token and model in AI settings.'});return;} response.json({reply}); }
+    catch {response.status(502).json({error:'OpenRouter request failed. Check your token and model, then try again.'});}
   });
   app.get('/api/catalog', authorize, (request, response) => {
     try {

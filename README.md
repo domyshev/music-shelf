@@ -151,3 +151,16 @@ Download-service APIs and the actual file/queue synchronization collector stay
 private. Deployment-specific proxy, DNS and network settings stay private too.
 Those services can publish the documented metadata without becoming part of
 this application's source code.
+
+## AI assistant and song texts
+
+Signed-in users can save lyrics and translations for each song. These texts are
+private to the verified email account and survive catalog synchronization.
+Open the AI assistant from the menu, then open its settings to save an OpenRouter
+API token and select a model. The token is encrypted on the server using a key
+derived from the existing authentication secret, and is never returned by the
+API. Keep the authentication secret with database backups; changing it makes
+previously stored OpenRouter tokens unreadable. Users can replace or remove a
+saved token. Model calls send the conversation to OpenRouter and can incur costs
+according to the selected model's pricing. Chat messages are kept in the open
+browser session, not in the database. The assistant does not yet queue downloads.

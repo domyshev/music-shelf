@@ -103,3 +103,28 @@ test('song metadata aligns icons with names and previews artist and album cards 
   await card.getByRole('button', { name: 'Close album card' }).click();
   await expect(song).toBeVisible();
 });
+
+test('edits lyrics and configures the AI drawer', async ({ page }) => {
+  let text = {lyrics:'',translation:''};
+  await page.route('**/api/tracks/*/text', async route => {
+    if (route.request().method()==='PUT') {text=route.request().postDataJSON();await route.fulfill({json:{ok:true}});} else await route.fulfill({json:text});
+  });
+  await page.route('**/api/ai/settings', route => route.fulfill({json:{model:'demo/model',hasToken:route.request().method()==='PUT'}}));
+  await page.route('**/api/ai/models', route => route.fulfill({json:{models:[{id:'demo/model',name:'Demo model'}]}}));
+  await page.route('**/api/ai/chat', route => route.fulfill({json:{reply:'A demo reply'}}));
+  await page.getByRole('button', {name:'Fictional song 0000',exact:true}).click();
+  await page.getByLabel('Lyrics',{exact:true}).fill('Some lyrics');
+  await page.getByLabel('Translation',{exact:true}).fill('Some translation');
+  await page.getByRole('button',{name:'Save lyrics'}).click();
+  await expect(page.getByText('Saved',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Close details'}).click();
+  await page.getByRole('button', {name:'Fictional song 0000',exact:true}).click();
+  await expect(page.getByLabel('Lyrics',{exact:true})).toHaveValue('Some lyrics');
+  await page.getByRole('button',{name:'Close details'}).click();
+  await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('menuitem',{name:'AI assistant'}).click();
+  await page.getByRole('button',{name:'AI settings'}).click();
+  await page.getByLabel('OpenRouter API token').fill('sample-key');
+  await page.getByRole('combobox',{name:'OpenRouter model'}).click();await page.getByRole('option',{name:'Demo model (demo/model)'}).click();
+  await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByText('Settings saved')).toBeVisible();
+  await page.getByRole('button',{name:'Back to chat'}).click();await page.getByLabel('Message AI').fill('Hello');await page.getByRole('button',{name:'Send',exact:true}).click();await expect(page.getByText('A demo reply')).toBeVisible();
+});
