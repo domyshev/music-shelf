@@ -111,7 +111,9 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
   });
   await page.route('**/api/ai/settings', route => route.fulfill({json:{model:'demo/model',hasToken:route.request().method()==='PUT'}}));
   await page.route('**/api/ai/models', route => route.fulfill({json:{models:[{id:'demo/model',name:'Demo model',supportsTools:true}]}}));
-  await page.route('**/api/ai/chat', route => route.fulfill({json:{reply:'A demo reply'}}));
+  const turns:{id:number;requestId:string;message:string;reply:string;state:string;createdAt:string}[]=[];
+  await page.route('**/api/ai/chat/history*', route => route.fulfill({json:{turns,nextBefore:null}}));
+  await page.route('**/api/ai/chat', route => {const body=route.request().postDataJSON();turns.push({id:turns.length+1,requestId:body.requestId,message:body.message,reply:'A demo reply',state:'complete',createdAt:'2026-01-01T00:00:00Z'});return route.fulfill({json:{reply:'A demo reply'}});});
   await page.getByRole('button', {name:'Fictional song 0000',exact:true}).click();
   await page.getByLabel('Lyrics · en · original',{exact:true}).fill('Some lyrics');
   await page.getByRole('tab',{name:'ru',exact:true}).click();
@@ -130,4 +132,5 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
   await page.getByRole('combobox',{name:'OpenRouter model'}).click();await page.getByRole('option',{name:'Demo model (demo/model)'}).click();
   await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByText('Settings saved')).toBeVisible();
   await page.getByRole('button',{name:'Back to chat'}).click();await page.getByLabel('Message AI').fill('Hello');await page.getByRole('button',{name:'Send',exact:true}).click();await expect(page.getByText('A demo reply')).toBeVisible();
+  await page.reload();await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('menuitem',{name:'AI assistant'}).click();await expect(page.getByText('Hello',{exact:true})).toBeVisible();await expect(page.getByText('A demo reply')).toBeVisible();
 });

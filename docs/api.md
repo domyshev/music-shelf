@@ -184,7 +184,11 @@ configured same origin.
 `GET`/`PUT /api/ai/settings` reads token presence and model or updates
 `{ "model": "...", "token": "..." }`; omit the token to keep it, or send
 `removeToken: true` to remove it. A token is never returned by the API.
-`GET /api/ai/models` lists OpenRouter models. `POST /api/ai/chat` accepts bounded
-user/assistant messages and sends them to OpenRouter with the user's token.
+`GET /api/ai/models` lists OpenRouter models. `GET /api/ai/chat/history` returns
+the signed-in account’s saved conversation in pages; the `before` cursor loads
+earlier turns. `POST /api/ai/chat` accepts `{ "requestId": "<uuid>", "message": "..." }`,
+stores the request and answer, and sends recent stored context to OpenRouter with
+the user’s token. Request IDs are idempotent; concurrent turns for one account
+are rejected. Interrupted turns are not automatically replayed.
 Chat calls may incur provider costs. These endpoints require authentication;
 mutations also require the configured origin.

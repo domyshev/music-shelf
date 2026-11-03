@@ -6,6 +6,7 @@ import { EmailAuth, resendMailer } from './auth.js';
 import { CatalogStore } from './store.js';
 import { Features } from './features.js';
 import { Bridge } from './bridge.js';
+import { ChatHistory } from './chat-history.js';
 
 process.umask(0o077);
 if (existsSync('.env')) process.loadEnvFile('.env');
@@ -19,6 +20,8 @@ if (!/^[a-f0-9]{64}$/.test(secret)) throw new Error('Authentication secret must 
 const auth = new EmailAuth(database, Buffer.from(secret, 'hex'));
 const features = new Features(database, Buffer.from(secret, 'hex'));
 const bridge = new Bridge(database);
+const chatHistory = new ChatHistory(database);
+chatHistory.recoverInterrupted();
 const origin = new URL(process.env.SHELF_ORIGIN ?? 'http://127.0.0.1:4174').origin;
 const configured = Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
 if (!configured && process.env.NODE_ENV === 'production') throw new Error('Production requires RESEND_API_KEY and EMAIL_FROM');
@@ -30,6 +33,6 @@ const port = Number(process.env.PORT ?? 4174);
 const host = process.env.HOST ?? '127.0.0.1';
 const queueUsersFile = process.env.SHELF_QUEUE_USERS_FILE;
 const queueUsers = (queueUsersFile ? readFileSync(queueUsersFile,'utf8') : process.env.SHELF_QUEUE_USERS ?? '').split(',').map(value=>value.trim().toLowerCase()).filter(Boolean);
-const server = createApp({ features, bridge, queueUsers, demo: process.env.SHELF_DEMO_MODE === '1', store, auth, mailer, origin, secureCookies: origin.startsWith('https:'), publisherKey }).listen(port, host, () => console.log(`Music Shelf listening on ${host}:${port}`));
-function stop() { server.close(() => { store.close(); auth.close(); features.close(); bridge.close(); process.exit(0); }); }
+const server = createApp({ features, bridge, chatHistory, queueUsers, demo: process.env.SHELF_DEMO_MODE === '1', store, auth, mailer, origin, secureCookies: origin.startsWith('https:'), publisherKey }).listen(port, host, () => console.log(`Music Shelf listening on ${host}:${port}`));
+function stop() { server.close(() => { store.close(); auth.close(); features.close(); bridge.close(); chatHistory.close(); process.exit(0); }); }
 process.on('SIGINT', stop); process.on('SIGTERM', stop);

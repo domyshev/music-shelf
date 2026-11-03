@@ -162,8 +162,9 @@ derived from the existing authentication secret, and is never returned by the
 API. Keep the authentication secret with database backups; changing it makes
 previously stored OpenRouter tokens unreadable. Users can replace or remove a
 saved token. Model calls send the conversation to OpenRouter and can incur costs
-according to the selected model's pricing. Chat messages are kept in the open
-browser session, not in the database. The assistant does not yet queue downloads.
+according to the selected model's pricing. Chat messages are stored on the server separately for each verified email account
+and restored when signing in from another browser. The assistant receives recent
+conversation turns as context. Earlier browser-only messages cannot be recovered. The assistant does not yet queue downloads.
 
 ## Music assistant tools
 

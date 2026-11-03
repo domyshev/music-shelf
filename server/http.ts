@@ -8,8 +8,9 @@ import { snapshotSchema, historyFilterSchema, catalogQuerySchema } from '../shar
 import { CatalogStore, SnapshotConflict } from './store.js';
 import type { Features } from './features.js';
 import type { Bridge } from './bridge.js';
+import { ChatBusy, ChatDuplicate, type ChatHistory } from './chat-history.js';
 
-export interface AppOptions { features?: Features; bridge?: Bridge; queueUsers?: string[]; demo?: boolean; store: CatalogStore; auth: EmailAuth; mailer: LoginMailer; origin: string; secureCookies?: boolean; publisherKey?: KeyObject; clientDirectory?: string; now?: () => number }
+export interface AppOptions { features?: Features; bridge?: Bridge; chatHistory?: ChatHistory; queueUsers?: string[]; demo?: boolean; store: CatalogStore; auth: EmailAuth; mailer: LoginMailer; origin: string; secureCookies?: boolean; publisherKey?: KeyObject; clientDirectory?: string; now?: () => number }
 export function createApp(options: AppOptions) {
   const app = express();
   const now = options.now ?? Date.now;
@@ -86,11 +87,32 @@ export function createApp(options: AppOptions) {
   app.get('/api/ai/models', authorize, async (_request,response) => {
     try { if (!options.features) throw new Error(); response.json({models:await options.features.models()}); } catch {response.status(502).json({error:'Unable to load models from OpenRouter'});}
   });
-  app.post('/api/ai/chat', authorize, sameOrigin, express.json({limit:'128kb'}), async (request,response) => {
-    const parsed=z.object({messages:z.array(z.object({role:z.enum(['user','assistant']),content:z.string().min(1).max(12000)}).strict()).min(1).max(30)}).strict().safeParse(request.body);
-    if (!parsed.success || parsed.data.messages.at(-1)?.role !== 'user') {response.status(400).json({error:'Invalid chat'});return;}
-    try { const reply=await options.features?.chat(response.locals.email,parsed.data.messages,options.store,options.bridge,options.queueUsers?.includes(response.locals.email) ?? false); if (reply == null) {response.status(400).json({error:'Set an OpenRouter token and model in AI settings.'});return;} response.json({reply}); }
-    catch {response.status(502).json({error:'OpenRouter request failed. Check your token and model, then try again.'});}
+  app.get('/api/ai/chat/history', authorize, (request,response) => {
+    const before=request.query.before===undefined?undefined:Number(request.query.before);
+    if(before!==undefined&&(!Number.isSafeInteger(before)||before<1)) {response.status(400).json({error:'Invalid history cursor'});return;}
+    if(!options.chatHistory){response.status(503).json({error:'Chat history unavailable'});return;}
+    response.json(options.chatHistory.page(response.locals.email,before));
+  });
+  app.post('/api/ai/chat', authorize, sameOrigin, express.json({limit:'32kb'}), async (request,response) => {
+    const parsed=z.object({requestId:z.uuid(),message:z.string().trim().min(1).max(12000)}).strict().safeParse(request.body);
+    if(!parsed.success){response.status(400).json({error:'Invalid chat message'});return;}
+    if(!options.features||!options.chatHistory){response.status(503).json({error:'Chat unavailable'});return;}
+    const email=response.locals.email;const {requestId,message}=parsed.data;
+    const settings=options.features.settings(email);
+    if(!settings.hasToken||!settings.model){response.status(400).json({error:'Set an OpenRouter token and model in AI settings.'});return;}
+    try {options.chatHistory.begin(email,requestId,message);} catch(error) {
+      if(error instanceof ChatBusy){response.status(409).json({error:'Another message is being processed. Please wait.'});return;}
+      if(error instanceof ChatDuplicate){response.status(409).json({error:'This message was already submitted. Reload the chat to see its status.'});return;}
+      response.status(500).json({error:'Unable to save message'});return;
+    }
+    try {
+      const reply=await options.features.chat(email,options.chatHistory.context(email,requestId),options.store,options.bridge,options.queueUsers?.includes(email) ?? false);
+      if(reply===null) throw new Error('AI settings unavailable');
+      options.chatHistory.complete(email,requestId,reply);response.json({reply});
+    } catch {
+      try {options.chatHistory.fail(email,requestId);} catch { /* A pending turn is marked failed after restart. */ }
+      response.status(502).json({error:'The response could not be completed. Check the chat history and queue before trying again.'});
+    }
   });
   app.get('/api/catalog', authorize, (request, response) => {
     try {
