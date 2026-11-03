@@ -177,7 +177,7 @@ not require browser cookies or Origin authentication.
 ### User song texts and AI
 
 Authenticated sessions can read and update their own `GET`/`PUT`
-`/api/tracks/:id/text` with `{ "lyrics": "...", "translation": "..." }`.
+`/api/tracks/:id/text` with `{ "originalLanguage": "en", "texts": { "en": "...", "ru": "..." } }`. Language keys are two or three lowercase letters. Legacy translations with unknown language are returned under `und`.
 The data is kept separately from imported snapshots. Mutations require the
 configured same origin.
 

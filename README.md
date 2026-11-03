@@ -154,7 +154,7 @@ this application's source code.
 
 ## AI assistant and song texts
 
-Signed-in users can save lyrics and translations for each song. These texts are
+Signed-in users can save lyrics and translations for each song in language tabs. English, Spanish and Russian are offered by default; users can add another two- or three-letter language code and mark the original. Previously saved translations without language information are shown under `und` until the user identifies them. These texts are
 private to the verified email account and survive catalog synchronization.
 Open the AI assistant from the menu, then open its settings to save an OpenRouter
 API token and select a model. The token is encrypted on the server using a key

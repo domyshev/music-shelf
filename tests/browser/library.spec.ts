@@ -105,7 +105,7 @@ test('song metadata aligns icons with names and previews artist and album cards 
 });
 
 test('edits lyrics and configures the AI drawer', async ({ page }) => {
-  let text = {lyrics:'',translation:''};
+  let text = {originalLanguage:'en',texts:{en:'',ru:'',es:''}};
   await page.route('**/api/tracks/*/text', async route => {
     if (route.request().method()==='PUT') {text=route.request().postDataJSON();await route.fulfill({json:{ok:true}});} else await route.fulfill({json:text});
   });
@@ -113,13 +113,16 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
   await page.route('**/api/ai/models', route => route.fulfill({json:{models:[{id:'demo/model',name:'Demo model'}]}}));
   await page.route('**/api/ai/chat', route => route.fulfill({json:{reply:'A demo reply'}}));
   await page.getByRole('button', {name:'Fictional song 0000',exact:true}).click();
-  await page.getByLabel('Lyrics',{exact:true}).fill('Some lyrics');
-  await page.getByLabel('Translation',{exact:true}).fill('Some translation');
+  await page.getByLabel('Lyrics · en · original',{exact:true}).fill('Some lyrics');
+  await page.getByRole('tab',{name:'ru',exact:true}).click();
+  await page.getByLabel('Lyrics · ru',{exact:true}).fill('Some translation');
   await page.getByRole('button',{name:'Save lyrics'}).click();
   await expect(page.getByText('Saved',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Close details'}).click();
   await page.getByRole('button', {name:'Fictional song 0000',exact:true}).click();
-  await expect(page.getByLabel('Lyrics',{exact:true})).toHaveValue('Some lyrics');
+  await expect(page.getByLabel('Lyrics · en · original',{exact:true})).toHaveValue('Some lyrics');
+  await page.getByRole('tab',{name:'ru',exact:true}).click();await expect(page.getByLabel('Lyrics · ru',{exact:true})).toHaveValue('Some translation');
+  await page.getByLabel('Language code').fill('fr');await page.getByRole('button',{name:'Add language'}).click();await page.getByRole('button',{name:'Mark fr as original'}).click();await page.getByLabel('Lyrics · fr · original').fill('Paroles');await page.getByRole('button',{name:'Save lyrics'}).click();await expect(page.getByText('Saved',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Close details'}).click();
   await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('menuitem',{name:'AI assistant'}).click();
   await page.getByRole('button',{name:'AI settings'}).click();

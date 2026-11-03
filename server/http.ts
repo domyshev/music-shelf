@@ -67,10 +67,12 @@ export function createApp(options: AppOptions) {
   app.get('/api/tracks/:id/text', authorize, (request, response) => {
     const data = options.features?.lyrics(String(request.params.id),response.locals.email); if (!data) { response.status(404).json({ error: 'Song not found' }); return; } response.json(data);
   });
-  app.put('/api/tracks/:id/text', authorize, sameOrigin, express.json({limit:'128kb'}), (request, response) => {
-    const parsed = z.object({lyrics:z.string().max(50000),translation:z.string().max(50000)}).strict().safeParse(request.body);
-    if (!parsed.success) { response.status(400).json({error:'Invalid song text'}); return; }
-    if (!options.features?.saveLyrics(String(request.params.id),response.locals.email,parsed.data.lyrics,parsed.data.translation)) { response.status(404).json({error:'Song not found'}); return; }
+  app.put('/api/tracks/:id/text', authorize, sameOrigin, express.json({limit:'1mb'}), (request, response) => {
+    const code=z.string().regex(/^[a-z]{2,3}$/);
+    const parsed=z.object({originalLanguage:code,texts:z.record(code,z.string().max(50000))}).strict().refine(value=>Object.keys(value.texts).length<=12 && Object.hasOwn(value.texts,value.originalLanguage));
+    const data=parsed.safeParse(request.body);
+    if (!data.success) { response.status(400).json({error:'Invalid song text'}); return; }
+    if (!options.features?.saveLyrics(String(request.params.id),response.locals.email,data.data.originalLanguage,data.data.texts)) { response.status(404).json({error:'Song not found'}); return; }
     response.json({ok:true});
   });
   app.get('/api/ai/settings', authorize, (_request, response) => response.json(options.features?.settings(response.locals.email) ?? {model:'',hasToken:false}));

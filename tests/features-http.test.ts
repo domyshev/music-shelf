@@ -20,8 +20,8 @@ test('new endpoints require sessions and same origin, and keep credentials priva
   assert.equal((await fetch(base+'/api/ai/settings',put(one,'http://evil.invalid',{model:'a/b',token:'sensitive'}))).status,403);
   const saved=await fetch(base+'/api/ai/settings',put(one,'http://test.invalid',{model:'a/b',token:'sensitive'}));assert.equal(saved.status,200);assert.equal((await saved.text()).includes('sensitive'),false);
   const other=await (await fetch(base+'/api/ai/settings',{headers:{Cookie:two}})).json();assert.deepEqual(other,{model:'',hasToken:false});
-  assert.equal((await fetch(base+'/api/tracks/song/text',put(one,'http://evil.invalid',{lyrics:'a',translation:'b'}))).status,403);
-  assert.equal((await fetch(base+'/api/tracks/song/text',put(one,'http://test.invalid',{lyrics:'a',translation:'b'}))).status,200);
-  assert.deepEqual(await (await fetch(base+'/api/tracks/song/text',{headers:{Cookie:two}})).json(),{lyrics:'',translation:''});
+  assert.equal((await fetch(base+'/api/tracks/song/text',put(one,'http://evil.invalid',{originalLanguage:'en',texts:{en:'a',ru:'b'}}))).status,403);
+  assert.equal((await fetch(base+'/api/tracks/song/text',put(one,'http://test.invalid',{originalLanguage:'en',texts:{en:'a',ru:'b'}}))).status,200);
+  assert.deepEqual(await (await fetch(base+'/api/tracks/song/text',{headers:{Cookie:two}})).json(),{originalLanguage:'en',texts:{en:'',ru:'',es:''}});
  }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));features.close();auth.close();store.close();rmSync(dir,{recursive:true,force:true});}
 });

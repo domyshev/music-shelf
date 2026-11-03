@@ -8,16 +8,20 @@ export class Features {
     this.key = createHmac('sha256', secret).update('music-shelf/openrouter-token/v1').digest();
     this.db = new DatabaseSync(path);
     this.db.exec(`CREATE TABLE IF NOT EXISTS track_texts (track_id TEXT NOT NULL, email TEXT NOT NULL, lyrics TEXT NOT NULL, translation TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(track_id,email));
+      CREATE TABLE IF NOT EXISTS track_text_languages (track_id TEXT NOT NULL, email TEXT NOT NULL, original_language TEXT NOT NULL, texts TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(track_id,email));
       CREATE TABLE IF NOT EXISTS ai_settings (email TEXT PRIMARY KEY, model TEXT NOT NULL, token BLOB, iv BLOB, tag BLOB);`);
   }
   close() { this.db.close(); }
   lyrics(id: string, email: string) {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return null;
-    return this.db.prepare('SELECT lyrics, translation FROM track_texts WHERE track_id=? AND email=?').get(id, email) ?? { lyrics: '', translation: '' };
+    const row = this.db.prepare('SELECT original_language, texts FROM track_text_languages WHERE track_id=? AND email=?').get(id, email) as {original_language:string;texts:string}|undefined;
+    if (row) return {originalLanguage:row.original_language,texts:JSON.parse(row.texts)};
+    const legacy=this.db.prepare('SELECT lyrics, translation FROM track_texts WHERE track_id=? AND email=?').get(id,email) as {lyrics:string;translation:string}|undefined;
+    return {originalLanguage:'en',texts:{en:legacy?.lyrics ?? '',ru:'',es:'',...(legacy?.translation?{und:legacy.translation}:{})}};
   }
-  saveLyrics(id: string, email: string, lyrics: string, translation: string) {
+  saveLyrics(id: string, email: string, originalLanguage: string, texts: Record<string,string>) {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return false;
-    this.db.prepare(`INSERT INTO track_texts VALUES(?,?,?,?,?) ON CONFLICT(track_id,email) DO UPDATE SET lyrics=excluded.lyrics,translation=excluded.translation,updated_at=excluded.updated_at`).run(id, email, lyrics, translation, new Date().toISOString());
+    this.db.prepare(`INSERT INTO track_text_languages VALUES(?,?,?,?,?) ON CONFLICT(track_id,email) DO UPDATE SET original_language=excluded.original_language,texts=excluded.texts,updated_at=excluded.updated_at`).run(id,email,originalLanguage,JSON.stringify(texts),new Date().toISOString());
     return true;
   }
   settings(email: string) {
