@@ -154,9 +154,13 @@ this application's source code.
 
 ## AI assistant and song texts
 
-Signed-in users can save lyrics and translations for each song in language tabs. English, Spanish and Russian are offered by default; users can add another two- or three-letter language code and mark the original. Previously saved translations without language information are shown under `und` until the user identifies them. These texts are
+Signed-in users can save lyrics and translations for each song in language tabs.
+English, Spanish and Russian are offered by default; users can add another two- or
+three-letter code and choose the original in language settings. Multiple languages
+can be selected and read side by side in one scrolling area. Previously saved
+translations without language information are shown under `und`. Texts are
 private to the verified email account and survive catalog synchronization.
-Open the AI assistant from the menu, then open its settings to save an OpenRouter
+Open the AI assistant from the header, then open Agent settings to save an OpenRouter
 API token and select a model. The token is encrypted on the server using a key
 derived from the existing authentication secret, and is never returned by the
 API. Keep the authentication secret with database backups; changing it makes
@@ -164,11 +168,11 @@ previously stored OpenRouter tokens unreadable. Users can replace or remove a
 saved token. Model calls send the conversation to OpenRouter and can incur costs
 according to the selected model's pricing. Chat messages are stored on the server separately for each verified email account
 and restored when signing in from another browser. The assistant receives recent
-conversation turns as context. Earlier browser-only messages cannot be recovered. The assistant does not yet queue downloads.
+conversation turns as context. Earlier browser-only messages cannot be recovered.
 
-The AI assistant opens from the header. On desktop its width can be adjusted by
-dragging the left edge or with the arrow keys; the preference is stored locally
-in the browser. Enter sends a message and Shift+Enter inserts a line break.
+The assistant and song card can be docked left or right or opened as a dialog. On
+desktop, drag the inner edge to resize either drawer; dialogs can also be resized
+vertically. Position and size preferences are stored locally in the browser. Enter sends a message and Shift+Enter inserts a line break.
 Assistant replies support Markdown, including lists and tables.
 
 ## Music assistant tools
