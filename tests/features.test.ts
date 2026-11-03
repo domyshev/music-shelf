@@ -22,13 +22,13 @@ test('song texts survive snapshots and tokens are encrypted and isolated by acco
     features.saveSettings('one@example.com','a/b','secret-token');
     assert.deepEqual(features.settings('one@example.com'),{model:'a/b',hasToken:true});
     assert.deepEqual(features.settings('two@example.com'),{model:'',hasToken:false});
-    assert.equal(await features.chat('two@example.com',[{role:'user',content:'Hi'}]),null);
-    assert.equal(await features.chat('one@example.com',[{role:'user',content:'Hi'}]),'Hello');
+    assert.equal(await features.chat('two@example.com',[{role:'user',content:'Hi'}],store),null);
+    assert.equal(await features.chat('one@example.com',[{role:'user',content:'Hi'}],store),'Hello');
     assert.equal(authorization,'Bearer secret-token');
     features.close(); store.close();
     assert.equal(readFileSync(path).includes(Buffer.from('secret-token')),false);
     features=new Features(path,secret,transport);
-    assert.equal(await features.chat('one@example.com',[{role:'user',content:'Hi'}]),'Hello');
+    assert.equal(await features.chat('one@example.com',[{role:'user',content:'Hi'}],store),'Hello');
     features.saveSettings('one@example.com','a/b',undefined,true);
     assert.equal(features.settings('one@example.com').hasToken,false);
   } finally {features.close();try{store.close();}catch{}rmSync(dir,{recursive:true,force:true});}

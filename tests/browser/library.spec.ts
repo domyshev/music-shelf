@@ -110,7 +110,7 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
     if (route.request().method()==='PUT') {text=route.request().postDataJSON();await route.fulfill({json:{ok:true}});} else await route.fulfill({json:text});
   });
   await page.route('**/api/ai/settings', route => route.fulfill({json:{model:'demo/model',hasToken:route.request().method()==='PUT'}}));
-  await page.route('**/api/ai/models', route => route.fulfill({json:{models:[{id:'demo/model',name:'Demo model'}]}}));
+  await page.route('**/api/ai/models', route => route.fulfill({json:{models:[{id:'demo/model',name:'Demo model',supportsTools:true}]}}));
   await page.route('**/api/ai/chat', route => route.fulfill({json:{reply:'A demo reply'}}));
   await page.getByRole('button', {name:'Fictional song 0000',exact:true}).click();
   await page.getByLabel('Lyrics · en · original',{exact:true}).fill('Some lyrics');

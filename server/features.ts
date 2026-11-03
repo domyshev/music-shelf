@@ -1,5 +1,8 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import type { CatalogStore } from './store.js';
+import { systemPrompt, tools, runTool } from './assistant.js';
+import type { Bridge } from './bridge.js';
 
 export class Features {
   private db: DatabaseSync;
@@ -48,18 +51,30 @@ export class Features {
   async models() {
     const response = await this.transport('https://openrouter.ai/api/v1/models', {signal: AbortSignal.timeout(15000)});
     if (!response.ok) throw new Error('Model list unavailable');
-    const body = await response.json() as {data?: {id:string;name:string;pricing?:{prompt?:string;completion?:string}}[]};
-    return (body.data ?? []).filter(model => typeof model.id === 'string' && typeof model.name === 'string').map(({id,name,pricing}) => ({id,name,pricing}));
+    const body = await response.json() as {data?: {id:string;name:string;pricing?:{prompt?:string;completion?:string};supported_parameters?:string[]}[]};
+    return (body.data ?? []).filter(model => typeof model.id === 'string' && typeof model.name === 'string').map(({id,name,pricing,supported_parameters}) => ({id,name,pricing,supportsTools: supported_parameters?.includes('tools') ?? false}));
   }
-  async chat(email: string, messages: {role:'user'|'assistant';content:string}[]) {
+  async chat(email: string, messages: {role:'user'|'assistant';content:string}[], store: CatalogStore, bridge?: Bridge, canQueue=false) {
     const settings = this.credential(email); if (!settings) return null;
-    const response = await this.transport('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST', signal: AbortSignal.timeout(90000), headers: { Authorization: `Bearer ${settings.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({model: settings.model, messages: [{role:'system',content:'You are a helpful music assistant. Never claim you have added or downloaded songs. Respond in the user’s language.'}, ...messages], max_tokens: 2000}),
-    });
-    if (!response.ok) throw new Error(`OpenRouter request failed (${response.status})`);
-    const result = await response.json() as {choices?: {message?: {content?: unknown}}[]};
-    const content = result.choices?.[0]?.message?.content; if (typeof content !== 'string') throw new Error('OpenRouter returned no text');
-    return content;
+    const found = new Map();
+    const conversation: object[] = [{role:'system',content:systemPrompt}, ...messages];
+    for (let round=0;round<6;round++) {
+      const response = await this.transport('https://openrouter.ai/api/v1/chat/completions', {
+        method:'POST', signal:AbortSignal.timeout(90000), headers:{Authorization:`Bearer ${settings.token}`,'Content-Type':'application/json'},
+        body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue),max_tokens:2000}),
+      });
+      if (!response.ok) throw new Error('OpenRouter request failed');
+      const result=await response.json() as {choices?:{message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};
+      const message=result.choices?.[0]?.message; if (!message) throw new Error('OpenRouter returned no message');
+      const calls=message.tool_calls;
+      if (!calls?.length) {if(typeof message.content!=='string') throw new Error('OpenRouter returned no text');return message.content;}
+      if(calls.length>5 || calls.some(call=>!call.id || call.type!=='function' || !call.function)) throw new Error('Invalid tool calls');
+      conversation.push({role:'assistant',content:typeof message.content==='string'?message.content:null,tool_calls:calls});
+      for(const call of calls) {
+        let output:unknown; try{output=await runTool(store,this,email,bridge,canQueue,found,call.function.name,call.function.arguments);}catch(error){output={error: error instanceof Error && error.message.startsWith('Corgi did not respond') ? error.message : 'Tool request failed or is not permitted'};}
+        conversation.push({role:'tool',tool_call_id:call.id,content:JSON.stringify(output)});
+      }
+    }
+    throw new Error('Tool request limit reached');
   }
 }

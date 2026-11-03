@@ -164,3 +164,16 @@ previously stored OpenRouter tokens unreadable. Users can replace or remove a
 saved token. Model calls send the conversation to OpenRouter and can incur costs
 according to the selected model's pricing. Chat messages are kept in the open
 browser session, not in the database. The assistant does not yet queue downloads.
+
+## Music assistant tools
+
+For tool-capable OpenRouter models, the assistant can query the library and
+history, search the local SpotiFLAC API, inspect its live queue, and edit the
+signed-in user's song texts by language. Queue additions are restricted to email
+addresses configured by `SHELF_QUEUE_USERS_FILE` (a private comma-separated file) or `SHELF_QUEUE_USERS`. An empty configuration denies queue additions. A Corgi-side worker initiates a
+signed connection to Music Shelf and performs only three allowed operations
+against the existing loopback SpotiFLAC API. The worker does not accept shell
+commands, output paths or arbitrary URLs. Models receive only the required tool
+results, and cannot directly access servers or credentials. The assistant instructions call for explicit requests before queue additions
+or lyric changes. Queue permissions are additionally enforced by the server.
+Model-generated statements should be verified against tool results.

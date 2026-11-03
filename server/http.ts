@@ -7,8 +7,9 @@ import { AuthError, codeLifetime, sessionLifetime, type EmailAuth, type LoginMai
 import { snapshotSchema, historyFilterSchema, catalogQuerySchema } from '../shared/catalog.js';
 import { CatalogStore, SnapshotConflict } from './store.js';
 import type { Features } from './features.js';
+import type { Bridge } from './bridge.js';
 
-export interface AppOptions { features?: Features; demo?: boolean; store: CatalogStore; auth: EmailAuth; mailer: LoginMailer; origin: string; secureCookies?: boolean; publisherKey?: KeyObject; clientDirectory?: string; now?: () => number }
+export interface AppOptions { features?: Features; bridge?: Bridge; queueUsers?: string[]; demo?: boolean; store: CatalogStore; auth: EmailAuth; mailer: LoginMailer; origin: string; secureCookies?: boolean; publisherKey?: KeyObject; clientDirectory?: string; now?: () => number }
 export function createApp(options: AppOptions) {
   const app = express();
   const now = options.now ?? Date.now;
@@ -88,7 +89,7 @@ export function createApp(options: AppOptions) {
   app.post('/api/ai/chat', authorize, sameOrigin, express.json({limit:'128kb'}), async (request,response) => {
     const parsed=z.object({messages:z.array(z.object({role:z.enum(['user','assistant']),content:z.string().min(1).max(12000)}).strict()).min(1).max(30)}).strict().safeParse(request.body);
     if (!parsed.success || parsed.data.messages.at(-1)?.role !== 'user') {response.status(400).json({error:'Invalid chat'});return;}
-    try { const reply=await options.features?.chat(response.locals.email,parsed.data.messages); if (reply == null) {response.status(400).json({error:'Set an OpenRouter token and model in AI settings.'});return;} response.json({reply}); }
+    try { const reply=await options.features?.chat(response.locals.email,parsed.data.messages,options.store,options.bridge,options.queueUsers?.includes(response.locals.email) ?? false); if (reply == null) {response.status(400).json({error:'Set an OpenRouter token and model in AI settings.'});return;} response.json({reply}); }
     catch {response.status(502).json({error:'OpenRouter request failed. Check your token and model, then try again.'});}
   });
   app.get('/api/catalog', authorize, (request, response) => {
@@ -109,6 +110,20 @@ export function createApp(options: AppOptions) {
     if (!filters.success) { response.status(400).json({ error: 'Invalid history filters' }); return; }
     try { response.json(options.store.history(limit, cursor, filters.data)); }
     catch { response.status(400).json({ error: 'Invalid history cursor' }); }
+  });
+  app.post(['/api/bridge/claim','/api/bridge/complete'], express.raw({type:'application/json',limit:'300kb'}), (request,response) => {
+    if (!options.publisherKey || !options.bridge) {response.status(503).json({error:'Bridge unavailable'});return;}
+    const timestamp=request.get('X-Shelf-Timestamp') ?? '', signature=request.get('X-Shelf-Signature') ?? '';
+    if (!/^\d{10}$/.test(timestamp) || Math.abs(now()-Number(timestamp)*1000)>120000 || !Buffer.isBuffer(request.body)) {response.status(400).json({error:'Invalid request'});return;}
+    try {
+      const signed=Buffer.concat([Buffer.from(timestamp+'\n'+request.path+'\n'),request.body]);
+      if (!verify(null,signed,options.publisherKey,Buffer.from(signature,'base64'))) {response.status(403).json({error:'Invalid signature'});return;}
+      const body=JSON.parse(request.body.toString('utf8')) as {nonce?:unknown;id?:unknown;result?:unknown};
+      if(typeof body.nonce!=='string' || !/^[a-f0-9]{32}$/.test(body.nonce) || !options.bridge.nonce(body.nonce,now())) {response.status(403).json({error:'Invalid or repeated request'});return;}
+      if(request.path.endsWith('/claim')) {response.json({job:options.bridge.claim()});return;}
+      if(typeof body.id!=='string' || !/^[a-f0-9-]{36}$/.test(body.id) || typeof body.result!=='object' || !body.result) {response.status(400).json({error:'Invalid result'});return;}
+      response.json({ok:options.bridge.complete(body.id,body.result)});
+    } catch {response.status(400).json({error:'Invalid bridge request'});}
   });
   app.post('/api/import', express.raw({ type: 'application/json', limit: '8mb' }), (request, response) => {
     response.set('Cache-Control', 'no-store');
