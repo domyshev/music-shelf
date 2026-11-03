@@ -24,7 +24,7 @@ def send(path, data):
         message=Path(temp)/'message';signature=Path(temp)/'signature'
         message.write_bytes(stamp.encode()+b'\n'+path.encode()+b'\n'+body)
         subprocess.run(['openssl','pkeyutl','-sign','-inkey',str(KEY),'-rawin','-in',str(message),'-out',str(signature)],capture_output=True,check=True,timeout=10)
-        headers={'Content-Type':'application/json','X-Shelf-Timestamp':stamp,'X-Shelf-Signature':base64.b64encode(signature.read_bytes()).decode()}
+        headers={'Content-Type':'application/json','User-Agent':'MusicShelfPublisher/1.0','X-Shelf-Timestamp':stamp,'X-Shelf-Signature':base64.b64encode(signature.read_bytes()).decode()}
     request=urllib.request.Request(SITE+path,data=body,headers=headers,method='POST')
     with urllib.request.urlopen(request,timeout=20) as response:return json.load(response)
 
