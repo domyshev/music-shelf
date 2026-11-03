@@ -126,13 +126,13 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
   await page.getByRole('tab',{name:'ru',exact:true}).click();await expect(page.getByLabel('Lyrics · ru',{exact:true})).toHaveValue('Some translation');
   await page.getByLabel('Language code').fill('fr');await page.getByRole('button',{name:'Add language'}).click();await page.getByRole('button',{name:'Mark fr as original'}).click();await page.getByLabel('Lyrics · fr · original').fill('Paroles');await page.getByRole('button',{name:'Save lyrics'}).click();await expect(page.getByText('Saved',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Close details'}).click();
-  await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('menuitem',{name:'AI assistant'}).click();
+  await page.getByRole('button',{name:'AI assistant',exact:true}).click();
   await page.getByRole('button',{name:'AI settings'}).click();
   await page.getByLabel('OpenRouter API token').fill('sample-key');
   await page.getByRole('combobox',{name:'OpenRouter model'}).click();await page.getByRole('option',{name:'Demo model (demo/model)'}).click();
   await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByText('Settings saved')).toBeVisible();
   await page.getByRole('button',{name:'Back to chat'}).click();await page.getByLabel('Message AI').fill('Hello');await page.getByRole('button',{name:'Send',exact:true}).click();await expect(page.getByText('A demo reply')).toBeVisible();
-  await page.reload();await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('menuitem',{name:'AI assistant'}).click();await expect(page.getByText('Hello',{exact:true})).toBeVisible();await expect(page.getByText('A demo reply')).toBeVisible();
+  await page.reload();await page.getByRole('button',{name:'AI assistant',exact:true}).click();await expect(page.getByText('Hello',{exact:true})).toBeVisible();await expect(page.getByText('A demo reply')).toBeVisible();
 });
 
 test('uses the turntable mark and blue-red themes', async ({ page }) => {
@@ -145,4 +145,22 @@ test('uses the turntable mark and blue-red themes', async ({ page }) => {
   await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('button',{name:'Dark theme'}).click();await page.keyboard.press('Escape');
   await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(16, 23, 38)');
   await page.screenshot({path:'/tmp/music-shelf-dark-024.png'});
+});
+
+
+test('formats AI replies, sends with Enter and remembers the drawer width', async ({ page }) => {
+  const turns:{id:number;requestId:string;message:string;reply:string;state:string;createdAt:string}[]=[];
+  await page.route('**/api/ai/settings', route=>route.fulfill({json:{model:'demo/model',hasToken:true}}));
+  await page.route('**/api/ai/chat/history*', route=>route.fulfill({json:{turns,nextBefore:null}}));
+  await page.route('**/api/ai/chat', route=>{const body=route.request().postDataJSON();turns.push({id:1,requestId:body.requestId,message:body.message,reply:'**Bold** and *italic*\n\n| Song | Status |\n| --- | --- |\n| Hey Joe | ready |\n\n- One\n- Two\n\n[unsafe](javascript:alert(1))',state:'complete',createdAt:'2026-01-01T00:00:00Z'});return route.fulfill({json:{reply:'ok'}});});
+  const aiButton=page.getByRole('button',{name:'AI assistant',exact:true});await expect(aiButton).toBeVisible();
+  const versionLabel=page.locator('.app-header').getByText(/^\d+\.\d+\.\d+$/);const buttonRect=await aiButton.boundingBox();const versionRect=await versionLabel.boundingBox();expect(versionRect!.x-(buttonRect!.x+buttonRect!.width)).toBeCloseTo(30,0);
+  await aiButton.click();await expect(page.getByText('Я хранитель твоей музыки. Чего надобно старец')).toBeVisible();
+  const input=page.getByLabel('Message AI');await input.fill('First line');await input.press('Shift+Enter');await input.pressSequentially('Second line');await expect(input).toHaveValue('First line\nSecond line');expect(turns).toHaveLength(0);
+  await input.press('Enter');await expect(page.getByText('Bold',{exact:true})).toBeVisible();expect(turns[0].message).toBe('First line\nSecond line');
+  await expect(page.locator('.ai-markdown strong')).toHaveText('Bold');await expect(page.locator('.ai-markdown em')).toHaveText('italic');await expect(page.locator('.ai-markdown table')).toContainText('Hey Joe');expect(await page.locator('.ai-markdown a').getAttribute('href')).not.toMatch(/^javascript:/i);await expect(page.getByRole('img',{name:'Music Shelf assistant'})).toBeVisible();
+  const handle=page.getByRole('separator',{name:'Resize assistant panel'});await expect(handle).toBeVisible();const before=Number(await handle.getAttribute('aria-valuenow'));const rect=await handle.boundingBox();await page.mouse.move(rect!.x+5,rect!.y+rect!.height/2);await page.mouse.down();await page.mouse.move(rect!.x-115,rect!.y+rect!.height/2,{steps:5});await page.mouse.up();const after=Number(await handle.getAttribute('aria-valuenow'));expect(after).toBeGreaterThan(before+80);
+  await page.screenshot({path:'/tmp/music-shelf-ai-025.png'});
+  await page.reload();await page.getByRole('button',{name:'AI assistant',exact:true}).click();await expect(page.getByRole('separator',{name:'Resize assistant panel'})).toHaveAttribute('aria-valuenow',String(after));await expect(page.locator('.ai-markdown table')).toContainText('Hey Joe');
+  await page.getByRole('separator',{name:'Resize assistant panel'}).focus();await page.keyboard.press('ArrowRight');await expect(page.getByRole('separator',{name:'Resize assistant panel'})).toHaveAttribute('aria-valuenow',String(after-24));
 });

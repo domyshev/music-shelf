@@ -166,6 +166,11 @@ according to the selected model's pricing. Chat messages are stored on the serve
 and restored when signing in from another browser. The assistant receives recent
 conversation turns as context. Earlier browser-only messages cannot be recovered. The assistant does not yet queue downloads.
 
+The AI assistant opens from the header. On desktop its width can be adjusted by
+dragging the left edge or with the arrow keys; the preference is stored locally
+in the browser. Enter sends a message and Shift+Enter inserts a line break.
+Assistant replies support Markdown, including lists and tables.
+
 ## Music assistant tools
 
 For tool-capable OpenRouter models, the assistant can query the library and
