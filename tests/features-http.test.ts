@@ -28,12 +28,19 @@ test('new endpoints require sessions and same origin, and keep credentials priva
   assert.deepEqual(await (await fetch(base+'/api/tracks/song/text',{headers:{Cookie:two}})).json(),{originalLanguage:'fr',texts:{en:'',ru:'',es:''}});
   assert.deepEqual((await (await fetch(base+'/api/tracks/song/text',{headers:{Cookie:one}})).json()).texts,{en:'a',ru:'b'});
   features.saveWordTranslations('song','one@example.invalid','en','ru',[{word:'Love',translation:'любовь'}]);
-  assert.deepEqual(await (await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=LOVE',{headers:{Cookie:one}})).json(),{translations:[{targetLanguage:'ru',translation:'любовь'}]});
+  assert.deepEqual(await (await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=LOVE',{headers:{Cookie:one}})).json(),{translations:[{id:1,targetLanguage:'ru',translation:'любовь',ai:false}]});
   assert.deepEqual(await (await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=love',{headers:{Cookie:two}})).json(),{translations:[]});
   assert.equal((await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=love')).status,401);
   assert.equal((await fetch(base+'/api/tracks/song/words',put(one,'http://evil.invalid',{word:'Love is all',sourceLanguage:'en',targetLanguage:'ru',translation:'Всё — любовь'}))).status,403);
   assert.equal((await fetch(base+'/api/tracks/song/words',put(one,'http://test.invalid',{word:'Love is all',sourceLanguage:'en',targetLanguage:'ru',translation:'Всё — любовь'}))).status,200);
-  assert.deepEqual(await (await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=Love%20is%20all',{headers:{Cookie:one}})).json(),{translations:[{targetLanguage:'ru',translation:'Всё — любовь'}]});
-  assert.deepEqual(await (await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=love',{headers:{Cookie:one}})).json(),{translations:[{targetLanguage:'ru',translation:'любовь'}]});
+  assert.deepEqual(await (await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=Love%20is%20all',{headers:{Cookie:one}})).json(),{translations:[{id:2,targetLanguage:'ru',translation:'Всё — любовь',ai:false}]});
+  assert.deepEqual(await (await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=love',{headers:{Cookie:one}})).json(),{translations:[{id:1,targetLanguage:'ru',translation:'любовь',ai:false}]});
+  assert.equal((await fetch(base+'/api/tracks/song/words',put(one,'http://test.invalid',{word:'Love',sourceLanguage:'en',targetLanguage:'ru',translation:'любить'}))).status,200);
+  const variants=await (await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=love',{headers:{Cookie:one}})).json();assert.equal(variants.translations.length,2);
+  const update={method:'PATCH',headers:{Cookie:one,Origin:'http://test.invalid','Content-Type':'application/json'},body:JSON.stringify({translation:'любовь!'} )};
+  assert.equal((await fetch(base+'/api/tracks/song/words/1',update)).status,200);
+  assert.equal((await fetch(base+'/api/tracks/song/words/1',{method:'DELETE',headers:{Cookie:two,Origin:'http://test.invalid'}})).status,404);
+  assert.equal((await fetch(base+'/api/tracks/song/words/1',{method:'DELETE',headers:{Cookie:one,Origin:'http://evil.invalid'}})).status,403);
+  assert.equal((await fetch(base+'/api/tracks/song/words/1',{method:'DELETE',headers:{Cookie:one,Origin:'http://test.invalid'}})).status,200);
  }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));features.close();auth.close();store.close();rmSync(dir,{recursive:true,force:true});}
 });

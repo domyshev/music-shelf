@@ -44,3 +44,13 @@ test('legacy lyrics and unknown-language translation remain available', () => {
     assert.deepEqual(features.lyrics('old','test@example.invalid'),{originalLanguage:'fr',texts:{fr:'French lyrics',en:'Old lyrics',und:'Old translation'}});
   } finally {features.close();store.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('migrates saved word translations once and preserves deletions across restarts', () => {
+  const dir=mkdtempSync(join(tmpdir(),'shelf-word-migration-'));const path=join(dir,'db.sqlite');const store=new CatalogStore(path);const secret=Buffer.alloc(32,8);
+  store.import({generatedAt:'2026-01-01T00:00:00.000Z',tracks:[{id:'old',title:'Old',artist:'Artist',album:'',year:null,status:'pending',file:null}]});
+  const db=new DatabaseSync(path);db.exec('CREATE TABLE song_word_translations (track_id TEXT NOT NULL,email TEXT NOT NULL,source_language TEXT NOT NULL,target_language TEXT NOT NULL,word TEXT NOT NULL,translation TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(track_id,email,source_language,target_language,word))');db.prepare('INSERT INTO song_word_translations VALUES(?,?,?,?,?,?,?)').run('old','a@example.invalid','en','ru','love','любовь','2026-01-01');db.close();
+  let features=new Features(path,secret);try {
+    const migrated=features.wordTranslations('old','a@example.invalid','en','Love')!;assert.equal(migrated.length,1);assert.equal(migrated[0].translation,'любовь');assert.equal(migrated[0].ai,false);
+    assert.equal(features.deleteWordTranslation('old','a@example.invalid',migrated[0].id),true);features.close();features=new Features(path,secret);assert.deepEqual(features.wordTranslations('old','a@example.invalid','en','love'),[]);
+  } finally {features.close();store.close();rmSync(dir,{recursive:true,force:true});}
+});

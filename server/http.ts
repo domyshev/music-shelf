@@ -92,6 +92,17 @@ export function createApp(options: AppOptions) {
     if(!options.features?.saveWordTranslations(String(request.params.id),response.locals.email,sourceLanguage,targetLanguage,[{word,translation}])){response.status(404).json({error:'Song not found'});return;}
     response.json({ok:true});
   });
+  app.patch('/api/tracks/:id/words/:variantId', authorize, sameOrigin, express.json({limit:'4kb'}), (request,response) => {
+    const variantId=Number(request.params.variantId);const parsed=z.object({translation:z.string().trim().min(1).max(500)}).strict().safeParse(request.body);
+    if(!Number.isSafeInteger(variantId)||variantId<1||!parsed.success){response.status(400).json({error:'Invalid translation'});return;}
+    if(!options.features?.updateWordTranslation(String(request.params.id),response.locals.email,variantId,parsed.data.translation)){response.status(404).json({error:'Translation not found'});return;}
+    response.json({ok:true});
+  });
+  app.delete('/api/tracks/:id/words/:variantId', authorize, sameOrigin, (request,response) => {
+    const variantId=Number(request.params.variantId);if(!Number.isSafeInteger(variantId)||variantId<1){response.status(400).json({error:'Invalid translation'});return;}
+    if(!options.features?.deleteWordTranslation(String(request.params.id),response.locals.email,variantId)){response.status(404).json({error:'Translation not found'});return;}
+    response.json({ok:true});
+  });
   app.put('/api/tracks/:id/language', authorize, sameOrigin, express.json({limit:'1kb'}), (request,response) => {
     const data=z.object({language:z.string().regex(/^(?!und$)[a-z]{2,3}$/)}).strict().safeParse(request.body);
     if (!data.success) { response.status(400).json({error:'Invalid language'}); return; }

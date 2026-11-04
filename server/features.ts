@@ -15,7 +15,17 @@ export class Features {
       CREATE TABLE IF NOT EXISTS track_text_languages (track_id TEXT NOT NULL, email TEXT NOT NULL, original_language TEXT NOT NULL, texts TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(track_id,email));
       CREATE TABLE IF NOT EXISTS track_original_languages (track_id TEXT PRIMARY KEY, language TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS song_word_translations (track_id TEXT NOT NULL, email TEXT NOT NULL, source_language TEXT NOT NULL, target_language TEXT NOT NULL, word TEXT NOT NULL, translation TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(track_id,email,source_language,target_language,word));
-      CREATE TABLE IF NOT EXISTS ai_settings (email TEXT PRIMARY KEY, model TEXT NOT NULL, token BLOB, iv BLOB, tag BLOB);`);
+      CREATE TABLE IF NOT EXISTS ai_settings (email TEXT PRIMARY KEY, model TEXT NOT NULL, token BLOB, iv BLOB, tag BLOB);
+      CREATE TABLE IF NOT EXISTS feature_migrations (name TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS song_translation_variants (id INTEGER PRIMARY KEY, track_id TEXT NOT NULL, email TEXT NOT NULL, source_language TEXT NOT NULL, target_language TEXT NOT NULL, word TEXT NOT NULL, translation TEXT NOT NULL, ai INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS song_translation_lookup ON song_translation_variants(track_id,email,source_language,word);`);
+    this.db.exec('BEGIN IMMEDIATE');try {
+      if(!this.db.prepare('SELECT 1 FROM feature_migrations WHERE name=?').get('song_translation_variants_v1')) {
+        this.db.exec(`INSERT INTO song_translation_variants(track_id,email,source_language,target_language,word,translation,ai,updated_at) SELECT track_id,email,source_language,target_language,word,translation,0,updated_at FROM song_word_translations`);
+        this.db.prepare('INSERT INTO feature_migrations VALUES(?)').run('song_translation_variants_v1');
+      }
+      this.db.exec('COMMIT');
+    } catch(error) {this.db.exec('ROLLBACK');throw error;}
   }
   close() { this.db.close(); }
   lyrics(id: string, email: string) {
@@ -35,13 +45,20 @@ export class Features {
   }
   wordTranslations(id:string,email:string,sourceLanguage:string,word:string) {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return null;
-    return this.db.prepare('SELECT target_language AS targetLanguage, translation FROM song_word_translations WHERE track_id=? AND email=? AND source_language=? AND word=? ORDER BY target_language').all(id,email,sourceLanguage,normalizePhrase(word)).map(row=>({...row}));
+    const rows=this.db.prepare('SELECT id, target_language AS targetLanguage, translation, ai FROM song_translation_variants WHERE track_id=? AND email=? AND source_language=? AND word=? ORDER BY target_language,id').all(id,email,sourceLanguage,normalizePhrase(word)) as {id:number;targetLanguage:string;translation:string;ai:number}[];
+    return rows.map(row=>({...row,ai:Boolean(row.ai)}));
   }
-  saveWordTranslations(id:string,email:string,sourceLanguage:string,targetLanguage:string,entries:{word:string;translation:string}[]) {
+  saveWordTranslations(id:string,email:string,sourceLanguage:string,targetLanguage:string,entries:{word:string;translation:string}[],ai=false) {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return false;
-    const insert=this.db.prepare(`INSERT INTO song_word_translations VALUES(?,?,?,?,?,?,?) ON CONFLICT(track_id,email,source_language,target_language,word) DO UPDATE SET translation=excluded.translation,updated_at=excluded.updated_at`);
-    this.db.exec('BEGIN IMMEDIATE');try {for(const entry of entries)insert.run(id,email,sourceLanguage,targetLanguage,normalizePhrase(entry.word),entry.translation,new Date().toISOString());this.db.exec('COMMIT');} catch(error) {this.db.exec('ROLLBACK');throw error;}
+    const insert=this.db.prepare('INSERT INTO song_translation_variants(track_id,email,source_language,target_language,word,translation,ai,updated_at) VALUES(?,?,?,?,?,?,?,?)');
+    this.db.exec('BEGIN IMMEDIATE');try {for(const entry of entries)insert.run(id,email,sourceLanguage,targetLanguage,normalizePhrase(entry.word),entry.translation,ai?1:0,new Date().toISOString());this.db.exec('COMMIT');} catch(error) {this.db.exec('ROLLBACK');throw error;}
     return true;
+  }
+  updateWordTranslation(id:string,email:string,variantId:number,translation:string) {
+    return this.db.prepare('UPDATE song_translation_variants SET translation=?,updated_at=? WHERE id=? AND track_id=? AND email=?').run(translation,new Date().toISOString(),variantId,id,email).changes>0;
+  }
+  deleteWordTranslation(id:string,email:string,variantId:number) {
+    return this.db.prepare('DELETE FROM song_translation_variants WHERE id=? AND track_id=? AND email=?').run(variantId,id,email).changes>0;
   }
   setOriginalLanguage(id: string, language: string) {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return false;
