@@ -219,3 +219,13 @@ test('renders song Markdown blocks and resizes metadata independently', async ({
  await divider.focus();await page.keyboard.press('ArrowUp');const savedHeight=(await metadata.boundingBox())!.height;expect(savedHeight).toBeLessThan(before+60);
  await dialog.getByRole('button',{name:'Close details'}).click();await page.getByRole('button',{name:'Fictional song 0001',exact:true}).click();await expect(page.locator('.song-metadata')).toHaveCSS('height',`${savedHeight}px`);await page.reload();await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();await expect(page.locator('.song-metadata')).toHaveCSS('height',`${savedHeight}px`);
 });
+
+
+test('shows a saved word translation above the selected word',async({page})=>{
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'en',texts:{en:'Love is all',ru:'',es:''}}}));
+ await page.route('**/api/tracks/*/words?*',route=>{const url=new URL(route.request().url());expect(url.searchParams.get('word')).toBe('Love');expect(url.searchParams.get('sourceLanguage')).toBe('en');return route.fulfill({json:{translations:[{targetLanguage:'ru',translation:'любовь'}]}});});
+ await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Song details'});
+ await expect(dialog.getByRole('tab',{name:'en'})).toHaveAttribute('aria-selected','true');await expect(dialog.getByRole('tab',{name:'en'}).locator('svg')).toBeVisible();
+ const text=dialog.locator('.lyrics-markdown p');await text.evaluate(el=>{const range=document.createRange();range.setStart(el.firstChild!,0);range.setEnd(el.firstChild!,4);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await text.dispatchEvent('mouseup');
+ await expect(page.getByRole('tooltip')).toContainText('любовь');
+});

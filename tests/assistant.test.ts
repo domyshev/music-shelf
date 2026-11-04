@@ -27,6 +27,9 @@ test('lyrics tools preserve other languages and isolate accounts',async()=>{
   await runTool(store,feature,'a@example.invalid',undefined,false,found,'save_song_text',JSON.stringify({track_id:'song',language:'ru',text:'translation'}));
   await runTool(store,feature,'a@example.invalid',undefined,false,found,'save_song_text',JSON.stringify({track_id:'song',language:'fr',text:'> original'}));
   feature.setOriginalLanguage('song','fr');const own=feature.lyrics('song','a@example.invalid');assert.equal(own?.originalLanguage,'fr');assert.equal(feature.lyrics('song','b@example.invalid')?.originalLanguage,'fr');assert.equal(own?.texts.fr,'> original');assert.equal(own?.texts.ru,'translation');assert.equal(feature.lyrics('song','b@example.invalid')?.texts.fr,undefined);
+  await runTool(store,feature,'a@example.invalid',undefined,false,found,'save_word_translations',JSON.stringify({track_id:'song',source_language:'en',target_language:'ru',entries:[{word:'Love',translation:'любовь'}]}));
+  assert.deepEqual(await runTool(store,feature,'a@example.invalid',undefined,false,found,'read_word_translations',JSON.stringify({track_id:'song',source_language:'en',word:'LOVE'})),[{targetLanguage:'ru',translation:'любовь'}]);
+  assert.deepEqual(await runTool(store,feature,'b@example.invalid',undefined,false,found,'read_word_translations',JSON.stringify({track_id:'song',source_language:'en',word:'love'})),[]);
   assert.equal(tools(true,false).some(t=>t.function.name==='enqueue_tracks'),false);
   await assert.rejects(runTool(store,feature,'b@example.invalid',undefined,false,found,'enqueue_tracks','{"ids":["1234567890123456789012"]}'));
  }finally{feature.close();store.close();rmSync(dir,{recursive:true,force:true});}

@@ -77,6 +77,13 @@ export function createApp(options: AppOptions) {
     if (!options.features?.saveLyrics(String(request.params.id),response.locals.email,data.data.originalLanguage ?? options.features.lyrics(String(request.params.id),response.locals.email)?.originalLanguage ?? 'en',data.data.texts)) { response.status(404).json({error:'Song not found'}); return; }
     response.json({ok:true});
   });
+  app.get('/api/tracks/:id/words', authorize, (request,response) => {
+    const parsed=z.object({word:z.string().trim().min(1).max(100).regex(/^[\p{L}\p{M}]+(?:['’\-][\p{L}\p{M}]+)*$/u),sourceLanguage:z.string().regex(/^[a-z]{2,3}$/)}).strict().safeParse(request.query);
+    if(!parsed.success){response.status(400).json({error:'Invalid word'});return;}
+    const translations=options.features?.wordTranslations(String(request.params.id),response.locals.email,parsed.data.sourceLanguage,parsed.data.word);
+    if(!translations){response.status(404).json({error:'Song not found'});return;}
+    response.json({translations});
+  });
   app.put('/api/tracks/:id/language', authorize, sameOrigin, express.json({limit:'1kb'}), (request,response) => {
     const data=z.object({language:z.string().regex(/^(?!und$)[a-z]{2,3}$/)}).strict().safeParse(request.body);
     if (!data.success) { response.status(400).json({error:'Invalid language'}); return; }

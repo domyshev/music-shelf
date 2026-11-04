@@ -27,5 +27,9 @@ test('new endpoints require sessions and same origin, and keep credentials priva
   assert.equal((await fetch(base+'/api/tracks/song/language',put(one,'http://test.invalid',{language:'fr'}))).status,200);
   assert.deepEqual(await (await fetch(base+'/api/tracks/song/text',{headers:{Cookie:two}})).json(),{originalLanguage:'fr',texts:{en:'',ru:'',es:''}});
   assert.deepEqual((await (await fetch(base+'/api/tracks/song/text',{headers:{Cookie:one}})).json()).texts,{en:'a',ru:'b'});
+  features.saveWordTranslations('song','one@example.invalid','en','ru',[{word:'Love',translation:'любовь'}]);
+  assert.deepEqual(await (await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=LOVE',{headers:{Cookie:one}})).json(),{translations:[{targetLanguage:'ru',translation:'любовь'}]});
+  assert.deepEqual(await (await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=love',{headers:{Cookie:two}})).json(),{translations:[]});
+  assert.equal((await fetch(base+'/api/tracks/song/words?sourceLanguage=en&word=love')).status,401);
  }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));features.close();auth.close();store.close();rmSync(dir,{recursive:true,force:true});}
 });
