@@ -3,6 +3,7 @@ import { verify, type KeyObject } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import { translationPhrase } from './translation-phrase.js';
 import { AuthError, codeLifetime, sessionLifetime, type EmailAuth, type LoginMailer } from './auth.js';
 import { snapshotSchema, historyFilterSchema, catalogQuerySchema } from '../shared/catalog.js';
 import { CatalogStore, SnapshotConflict } from './store.js';
@@ -78,11 +79,18 @@ export function createApp(options: AppOptions) {
     response.json({ok:true});
   });
   app.get('/api/tracks/:id/words', authorize, (request,response) => {
-    const parsed=z.object({word:z.string().trim().min(1).max(100).regex(/^[\p{L}\p{M}]+(?:['’\-][\p{L}\p{M}]+)*$/u),sourceLanguage:z.string().regex(/^[a-z]{2,3}$/)}).strict().safeParse(request.query);
+    const parsed=z.object({word:translationPhrase,sourceLanguage:z.string().regex(/^[a-z]{2,3}$/)}).strict().safeParse(request.query);
     if(!parsed.success){response.status(400).json({error:'Invalid word'});return;}
     const translations=options.features?.wordTranslations(String(request.params.id),response.locals.email,parsed.data.sourceLanguage,parsed.data.word);
     if(!translations){response.status(404).json({error:'Song not found'});return;}
     response.json({translations});
+  });
+  app.put('/api/tracks/:id/words', authorize, sameOrigin, express.json({limit:'4kb'}), (request,response) => {
+    const parsed=z.object({word:translationPhrase,sourceLanguage:z.string().regex(/^[a-z]{2,3}$/),targetLanguage:z.string().regex(/^[a-z]{2,3}$/),translation:z.string().trim().min(1).max(500)}).strict().safeParse(request.body);
+    if(!parsed.success){response.status(400).json({error:'Invalid translation'});return;}
+    const {word,sourceLanguage,targetLanguage,translation}=parsed.data;
+    if(!options.features?.saveWordTranslations(String(request.params.id),response.locals.email,sourceLanguage,targetLanguage,[{word,translation}])){response.status(404).json({error:'Song not found'});return;}
+    response.json({ok:true});
   });
   app.put('/api/tracks/:id/language', authorize, sameOrigin, express.json({limit:'1kb'}), (request,response) => {
     const data=z.object({language:z.string().regex(/^(?!und$)[a-z]{2,3}$/)}).strict().safeParse(request.body);

@@ -30,6 +30,9 @@ test('lyrics tools preserve other languages and isolate accounts',async()=>{
   await runTool(store,feature,'a@example.invalid',undefined,false,found,'save_word_translations',JSON.stringify({track_id:'song',source_language:'en',target_language:'ru',entries:[{word:'Love',translation:'любовь'}]}));
   assert.deepEqual(await runTool(store,feature,'a@example.invalid',undefined,false,found,'read_word_translations',JSON.stringify({track_id:'song',source_language:'en',word:'LOVE'})),[{targetLanguage:'ru',translation:'любовь'}]);
   assert.deepEqual(await runTool(store,feature,'b@example.invalid',undefined,false,found,'read_word_translations',JSON.stringify({track_id:'song',source_language:'en',word:'love'})),[]);
+  await runTool(store,feature,'a@example.invalid',undefined,false,found,'save_word_translations',JSON.stringify({track_id:'song',source_language:'en',target_language:'ru',entries:[{word:'Love is all',translation:'Любовь — это всё'}]}));
+  assert.deepEqual(await runTool(store,feature,'a@example.invalid',undefined,false,found,'read_word_translations',JSON.stringify({track_id:'song',source_language:'en',word:' LOVE   IS ALL '})),[{targetLanguage:'ru',translation:'Любовь — это всё'}]);
+  assert.deepEqual(await runTool(store,feature,'a@example.invalid',undefined,false,found,'read_word_translations',JSON.stringify({track_id:'song',source_language:'en',word:'love'})),[{targetLanguage:'ru',translation:'любовь'}]);
   assert.equal(tools(true,false).some(t=>t.function.name==='enqueue_tracks'),false);
   await assert.rejects(runTool(store,feature,'b@example.invalid',undefined,false,found,'enqueue_tracks','{"ids":["1234567890123456789012"]}'));
  }finally{feature.close();store.close();rmSync(dir,{recursive:true,force:true});}

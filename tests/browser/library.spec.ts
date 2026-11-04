@@ -227,5 +227,17 @@ test('shows a saved word translation above the selected word',async({page})=>{
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Song details'});
  await expect(dialog.getByRole('tab',{name:'en'})).toHaveAttribute('aria-selected','true');await expect(dialog.getByRole('tab',{name:'en'}).locator('svg')).toBeVisible();
  const text=dialog.locator('.lyrics-markdown p');await text.evaluate(el=>{const range=document.createRange();range.setStart(el.firstChild!,0);range.setEnd(el.firstChild!,4);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await text.dispatchEvent('mouseup');
- await expect(page.getByRole('tooltip')).toContainText('любовь');
+ await expect(page.getByRole('dialog',{name:'Word or phrase translation'})).toContainText('любовь');
+});
+
+
+test('adds phrase translations manually and asks the agent to save a phrase',async({page})=>{
+ const stored:Record<string,string>={};
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'en',texts:{en:'Love is all',ru:'',es:''}}}));
+ await page.route('**/api/tracks/*/words**',route=>{const req=route.request();if(req.method()==='PUT'){const body=req.postDataJSON();stored[body.word]=body.translation;return route.fulfill({json:{ok:true}});}const url=new URL(req.url());const word=url.searchParams.get('word')!;return route.fulfill({json:{translations:stored[word]?[{targetLanguage:'ru',translation:stored[word]}]:[]}});});
+ await page.route('**/api/ai/chat',route=>{const message=route.request().postDataJSON().message;expect(message).toContain('Love is all');expect(message).toContain('save_word_translations');stored['Love is all']='Всё — любовь';return route.fulfill({json:{reply:'Saved'}});});
+ await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const text=page.locator('.lyrics-markdown p');
+ async function selectPhrase(){await text.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await text.dispatchEvent('mouseup');}
+ await selectPhrase();let tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip).toContainText('No saved translation');await tip.getByLabel('Translation',{exact:true}).fill('Любовь — это всё');await tip.getByRole('button',{name:'Save',exact:true}).click();await expect(tip).toContainText('Любовь — это всё');
+ await tip.getByRole('button',{name:'Close'}).click();await selectPhrase();tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip).toContainText('Любовь — это всё');await tip.getByRole('button',{name:'Translate with AI'}).click();await expect(tip).toContainText('Всё — любовь');
 });

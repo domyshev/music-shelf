@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { CatalogStore } from './store.js';
 import { systemPrompt, tools, runTool } from './assistant.js';
 import type { Bridge } from './bridge.js';
+import { normalizePhrase } from './translation-phrase.js';
 
 export class Features {
   private db: DatabaseSync;
@@ -34,12 +35,12 @@ export class Features {
   }
   wordTranslations(id:string,email:string,sourceLanguage:string,word:string) {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return null;
-    return this.db.prepare('SELECT target_language AS targetLanguage, translation FROM song_word_translations WHERE track_id=? AND email=? AND source_language=? AND word=? ORDER BY target_language').all(id,email,sourceLanguage,word.normalize('NFC').toLowerCase()).map(row=>({...row}));
+    return this.db.prepare('SELECT target_language AS targetLanguage, translation FROM song_word_translations WHERE track_id=? AND email=? AND source_language=? AND word=? ORDER BY target_language').all(id,email,sourceLanguage,normalizePhrase(word)).map(row=>({...row}));
   }
   saveWordTranslations(id:string,email:string,sourceLanguage:string,targetLanguage:string,entries:{word:string;translation:string}[]) {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return false;
     const insert=this.db.prepare(`INSERT INTO song_word_translations VALUES(?,?,?,?,?,?,?) ON CONFLICT(track_id,email,source_language,target_language,word) DO UPDATE SET translation=excluded.translation,updated_at=excluded.updated_at`);
-    this.db.exec('BEGIN IMMEDIATE');try {for(const entry of entries)insert.run(id,email,sourceLanguage,targetLanguage,entry.word.normalize('NFC').toLowerCase(),entry.translation,new Date().toISOString());this.db.exec('COMMIT');} catch(error) {this.db.exec('ROLLBACK');throw error;}
+    this.db.exec('BEGIN IMMEDIATE');try {for(const entry of entries)insert.run(id,email,sourceLanguage,targetLanguage,normalizePhrase(entry.word),entry.translation,new Date().toISOString());this.db.exec('COMMIT');} catch(error) {this.db.exec('ROLLBACK');throw error;}
     return true;
   }
   setOriginalLanguage(id: string, language: string) {

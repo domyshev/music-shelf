@@ -10,7 +10,7 @@ const read=(key:string,fallback:string)=>{try{return localStorage.getItem(key)??
 const write=(key:string,value:string)=>{try{localStorage.setItem(key,value);}catch{/* Storage may be unavailable. */}};
 const clamp=(value:number,min:number,max:number)=>Math.min(Math.max(value,min),Math.max(min,max));
 
-export function WindowFrame({open,onClose,id,defaultPlacement,title,actions,children}:{open:boolean;onClose:()=>void;id:'song'|'agent';defaultPlacement:Placement;title:ReactNode;actions?:ReactNode;children:ReactNode}) {
+export function WindowFrame({open,onClose,id,defaultPlacement,title,actions,children,allowExternalFocus=false}:{open:boolean;onClose:()=>void;id:'song'|'agent';defaultPlacement:Placement;title:ReactNode;actions?:ReactNode;children:ReactNode;allowExternalFocus?:boolean}) {
   const key=`music-shelf-${id}-window`;
   const [placement,setPlacement]=useState<Placement>(()=>{const p=read(`${key}-placement`,defaultPlacement);return p==='left'||p==='right'||p==='modal'?p:defaultPlacement;});
   const [width,setWidth]=useState(()=>{const legacy=id==='agent'?read('music-shelf-ai-drawer-width','430'):'620';const w=Number(read(`${key}-width`,legacy));return Number.isFinite(w)&&w>=280&&w<=1400?w:(id==='agent'?430:620);});
@@ -27,7 +27,7 @@ export function WindowFrame({open,onClose,id,defaultPlacement,title,actions,chil
   function pointerUp(e:React.PointerEvent<HTMLElement>){drag.current=null;if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}
   const resizeProps=(kind:'width'|'height'|'both')=>({onPointerDown:(e:React.PointerEvent<HTMLElement>)=>pointerDown(kind,e),onPointerMove:pointerMove,onPointerUp:pointerUp,onPointerCancel:()=>{drag.current=null;}});
   const handleKeys=(e:React.KeyboardEvent<HTMLElement>,kind:'width'|'height')=>{if(kind==='width'&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){e.preventDefault();setSize(visibleWidth+(e.key==='ArrowLeft'?(placement==='right'?24:-24):(placement==='right'?-24:24)),visibleHeight);}if(kind==='height'&&(e.key==='ArrowUp'||e.key==='ArrowDown')){e.preventDefault();setSize(visibleWidth,visibleHeight+(e.key==='ArrowUp'?-24:24));}};
-  return <Modal open={open} onClose={(_event,reason)=>{if(reason==='escapeKeyDown'&&document.querySelector('[role="tooltip"]'))return;onClose();}} keepMounted={false}>
+  return <Modal open={open} disableEnforceFocus={allowExternalFocus} onClose={(_event,reason)=>{if(reason==='escapeKeyDown'&&document.querySelector('[role="tooltip"]'))return;onClose();}} keepMounted={false}>
     <Box role="dialog" aria-modal="true" aria-label={id==='song'?'Song details':'AI assistant'} className={`window-frame window-${placement}`} sx={{width:{xs:'100%',sm:visibleWidth},height:placement==='modal'?{xs:'100%',sm:visibleHeight}:'100%',maxWidth:'100%',maxHeight:'100%'}}>
       <Box className="window-header"><Typography component="div" variant="h6" sx={{flex:1,minWidth:0,overflowWrap:'anywhere'}}>{title}</Typography>{actions}
         <Tooltip title="Dock left"><IconButton aria-label="Dock left" aria-pressed={placement==='left'} onClick={()=>setMode('left')}><FirstPageRounded /></IconButton></Tooltip>
