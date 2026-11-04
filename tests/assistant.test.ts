@@ -23,9 +23,10 @@ test('lyrics tools preserve other languages and isolate accounts',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'shelf-assistant-text-'));const db=join(dir,'db.sqlite');const store=new CatalogStore(db);const feature=new Features(db,Buffer.alloc(32,5));const found=new Map();
  try{
   store.import({generatedAt:'2026-01-01T00:00:00.000Z',tracks:[{id:'song',title:'Song',artist:'Artist',album:'',year:null,status:'pending',file:null}]});
-  await runTool(store,feature,'a@example.invalid',undefined,false,found,'save_song_text',JSON.stringify({track_id:'song',language:'fr',text:'original',mark_original:true}));
-  await runTool(store,feature,'a@example.invalid',undefined,false,found,'save_song_text',JSON.stringify({track_id:'song',language:'ru',text:'translation',mark_original:false}));
-  const own=feature.lyrics('song','a@example.invalid');assert.equal(own?.originalLanguage,'fr');assert.equal(own?.texts.fr,'original');assert.equal(own?.texts.ru,'translation');assert.equal(feature.lyrics('song','b@example.invalid')?.texts.fr,undefined);
+  await runTool(store,feature,'a@example.invalid',undefined,false,found,'save_song_text',JSON.stringify({track_id:'song',language:'fr',text:'original'}));
+  await runTool(store,feature,'a@example.invalid',undefined,false,found,'save_song_text',JSON.stringify({track_id:'song',language:'ru',text:'translation'}));
+  await runTool(store,feature,'a@example.invalid',undefined,false,found,'save_song_text',JSON.stringify({track_id:'song',language:'fr',text:'> original'}));
+  feature.setOriginalLanguage('song','fr');const own=feature.lyrics('song','a@example.invalid');assert.equal(own?.originalLanguage,'fr');assert.equal(feature.lyrics('song','b@example.invalid')?.originalLanguage,'fr');assert.equal(own?.texts.fr,'> original');assert.equal(own?.texts.ru,'translation');assert.equal(feature.lyrics('song','b@example.invalid')?.texts.fr,undefined);
   assert.equal(tools(true,false).some(t=>t.function.name==='enqueue_tracks'),false);
   await assert.rejects(runTool(store,feature,'b@example.invalid',undefined,false,found,'enqueue_tracks','{"ids":["1234567890123456789012"]}'));
  }finally{feature.close();store.close();rmSync(dir,{recursive:true,force:true});}

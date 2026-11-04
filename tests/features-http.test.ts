@@ -23,5 +23,9 @@ test('new endpoints require sessions and same origin, and keep credentials priva
   assert.equal((await fetch(base+'/api/tracks/song/text',put(one,'http://evil.invalid',{originalLanguage:'en',texts:{en:'a',ru:'b'}}))).status,403);
   assert.equal((await fetch(base+'/api/tracks/song/text',put(one,'http://test.invalid',{originalLanguage:'en',texts:{en:'a',ru:'b'}}))).status,200);
   assert.deepEqual(await (await fetch(base+'/api/tracks/song/text',{headers:{Cookie:two}})).json(),{originalLanguage:'en',texts:{en:'',ru:'',es:''}});
+  assert.equal((await fetch(base+'/api/tracks/song/language',put(one,'http://evil.invalid',{language:'fr'}))).status,403);
+  assert.equal((await fetch(base+'/api/tracks/song/language',put(one,'http://test.invalid',{language:'fr'}))).status,200);
+  assert.deepEqual(await (await fetch(base+'/api/tracks/song/text',{headers:{Cookie:two}})).json(),{originalLanguage:'fr',texts:{en:'',ru:'',es:''}});
+  assert.deepEqual((await (await fetch(base+'/api/tracks/song/text',{headers:{Cookie:one}})).json()).texts,{en:'a',ru:'b'});
  }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));features.close();auth.close();store.close();rmSync(dir,{recursive:true,force:true});}
 });

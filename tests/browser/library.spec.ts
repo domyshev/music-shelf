@@ -107,8 +107,9 @@ test('song metadata aligns icons with names and previews artist and album cards 
 test('edits lyrics and configures the AI drawer', async ({ page }) => {
   let text = {originalLanguage:'en',texts:{en:'',ru:'',es:''}};
   await page.route('**/api/tracks/*/text', async route => {
-    if (route.request().method()==='PUT') {text=route.request().postDataJSON();await route.fulfill({json:{ok:true}});} else await route.fulfill({json:text});
+    if (route.request().method()==='PUT') {text={...text,...route.request().postDataJSON()};await route.fulfill({json:{ok:true}});} else await route.fulfill({json:text});
   });
+  await page.route('**/api/tracks/*/language', route=>{text.originalLanguage=route.request().postDataJSON().language;return route.fulfill({json:{ok:true}});});
   let hasToken=false;
   await page.route('**/api/ai/settings', route => {if(route.request().method()==='PUT'){const body=route.request().postDataJSON();hasToken=body.removeToken?false:!!body.token||hasToken;}return route.fulfill({json:{model:'demo/model',hasToken}});});
   await page.route('**/api/ai/models', route => route.fulfill({json:{models:[{id:'demo/model',name:'Demo model',supportsTools:true}]}}));
@@ -123,12 +124,12 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
   await expect(page.getByText('Saved',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Close details'}).click();
   await page.getByRole('button', {name:'Fictional song 0000',exact:true}).click();
-  await expect(page.getByLabel('Lyrics en',{exact:true})).toHaveValue('Some lyrics');
+  await page.getByRole('button',{name:'Edit',exact:true}).click();await expect(page.getByLabel('Lyrics en',{exact:true})).toHaveValue('Some lyrics');
   await page.getByRole('tab',{name:'ru',exact:true}).click();await expect(page.getByLabel('Lyrics ru',{exact:true})).toHaveValue('Some translation');
   await page.getByRole('button',{name:'Add language'}).click();await page.getByLabel('Language code').fill('fr');await page.getByRole('button',{name:'Add',exact:true}).click();
-  await page.getByRole('button',{name:'Language menu'}).click();await page.getByRole('menuitem',{name:'Settings'}).click();await page.getByRole('combobox',{name:'Default language'}).click();await page.getByRole('option',{name:'fr',exact:true}).click();await page.keyboard.press('Escape');
+  await page.getByRole('combobox',{name:'Original language'}).click();await page.getByRole('option',{name:'fr',exact:true}).click();
   await page.getByLabel('Lyrics fr',{exact:true}).fill('Paroles');await page.getByRole('button',{name:'Save lyrics'}).click();await expect(page.getByText('Saved',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Close details'}).click();await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();await expect(page.getByRole('tab',{name:'fr',exact:true})).toHaveCSS('font-weight','700');await expect(page.getByLabel('Lyrics fr')).toHaveValue('Paroles');await page.getByRole('button',{name:'Close details'}).click();
+  await page.getByRole('button',{name:'Close details'}).click();await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();await expect(page.getByRole('combobox',{name:'Original language'})).toHaveText('fr');await expect(page.getByText('Paroles',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Close details'}).click();
   await page.getByRole('button',{name:'AI assistant',exact:true}).click();
   await page.getByRole('button',{name:'Agent menu'}).click();await page.getByRole('menuitem',{name:'Agent settings'}).click();
   await page.getByLabel('OpenRouter API token').fill('sample-key');
@@ -174,8 +175,8 @@ test('song languages share scrolling and panels can dock or resize', async ({pag
  const lines=Array.from({length:80},(_,i)=>`Line ${i+1}`).join('\n');
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'en',texts:{en:lines,ru:lines,es:''}}}));
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'Song details'});const en=dialog.getByRole('tab',{name:'en',exact:true});await expect(en).toHaveCSS('font-weight','700');await expect(en).not.toContainText('original');await en.hover();await expect(page.getByRole('tooltip')).toContainText('Original language');await page.mouse.move(20,20);
- await dialog.getByRole('tab',{name:'ru',exact:true}).click();await expect(dialog.getByLabel('Lyrics en')).toBeVisible();await expect(dialog.getByLabel('Lyrics ru')).toBeVisible();await page.screenshot({path:'/tmp/music-shelf-song-026.png'});
+ const dialog=page.getByRole('dialog',{name:'Song details'});const en=dialog.getByRole('tab',{name:'en',exact:true});await expect(en).not.toContainText('original');
+ await dialog.getByRole('tab',{name:'ru',exact:true}).click();await dialog.getByRole('button',{name:'Edit',exact:true}).click();await expect(dialog.getByLabel('Lyrics en')).toBeVisible();await expect(dialog.getByLabel('Lyrics ru')).toBeVisible();await page.screenshot({path:'/tmp/music-shelf-song-026.png'});
  const scroll=dialog.getByTestId('lyrics-scroll');expect(await scroll.evaluate(e=>e.scrollHeight>e.clientHeight)).toBe(true);await scroll.evaluate(e=>e.scrollTop=200);expect(await scroll.evaluate(e=>e.scrollTop)).toBeGreaterThan(0);await expect(dialog.getByRole('tab',{name:'en'})).toBeVisible();
  const topBefore=await dialog.getByRole('button',{name:'Close details'}).boundingBox();await scroll.evaluate(e=>e.scrollTop=400);const topAfter=await dialog.getByRole('button',{name:'Close details'}).boundingBox();expect(topAfter!.y).toBe(topBefore!.y);
  await dialog.getByRole('button',{name:'Dock left'}).click();await expect(dialog).toHaveClass(/window-left/);let widthHandle=dialog.getByRole('separator',{name:'Resize song panel'});let width=Number(await widthHandle.getAttribute('aria-valuenow'));await widthHandle.focus();await page.keyboard.press('ArrowRight');await expect(widthHandle).toHaveAttribute('aria-valuenow',String(width+24));
@@ -195,5 +196,21 @@ test('ready song metadata stays fixed while only lyrics scroll', async ({page}) 
  const scroll=dialog.getByTestId('lyrics-scroll');await expect(scroll).toBeVisible();expect(await scroll.evaluate(e=>e.scrollHeight>e.clientHeight)).toBe(true);
  const file=dialog.getByText('song.flac',{exact:true});await expect(file).toBeVisible();const before=await file.boundingBox();await scroll.evaluate(e=>e.scrollTop=500);expect((await file.boundingBox())!.y).toBe(before!.y);await expect(dialog.getByRole('button',{name:'Save lyrics'})).toBeVisible();
  await page.screenshot({path:'/tmp/music-shelf-ready-026.png'});
- await page.setViewportSize({width:390,height:844});await expect(dialog.getByLabel('Lyrics en')).toBeVisible();await expect(dialog.getByRole('button',{name:'Save lyrics'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.setViewportSize({width:390,height:844});await expect(dialog.locator('.lyrics-markdown').first()).toBeVisible();await expect(dialog.getByRole('button',{name:'Save lyrics'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+
+test('renders song Markdown blocks and resizes metadata independently', async ({page}) => {
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'fr',texts:{fr:'> Premier vers\n> Deuxième vers\n\nPlain text',ru:'> Первая строка\n> Вторая строка',en:'',es:''}}}));
+ await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Song details'});
+ await expect(dialog.getByRole('combobox',{name:'Original language'})).toHaveText('fr');
+ await expect(dialog.locator('.lyrics-markdown blockquote')).toContainText('Premier vers');
+ await dialog.getByRole('tab',{name:'ru',exact:true}).click();
+ await expect(dialog.locator('.lyrics-markdown blockquote')).toHaveCount(2);
+ const metadata=dialog.locator('.song-metadata');const before=(await metadata.boundingBox())!.height;
+ const divider=dialog.getByRole('separator',{name:'Resize song information and lyrics'});const rect=(await divider.boundingBox())!;
+ await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2+70,{steps:5});await page.mouse.up();
+ expect((await metadata.boundingBox())!.height).toBeGreaterThan(before+50);
+ await divider.focus();await page.keyboard.press('ArrowUp');expect((await metadata.boundingBox())!.height).toBeLessThan(before+60);
 });
