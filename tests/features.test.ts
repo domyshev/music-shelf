@@ -15,6 +15,9 @@ test('song texts survive snapshots and tokens are encrypted and isolated by acco
   try {
     const track={id:'track1',title:'Song',artist:'Artist',album:'',year:null,status:'pending' as const,file:null};
     store.import({generatedAt:'2026-01-01T00:00:00.000Z',tracks:[track]});
+    assert.equal(features.lyrics('track1','one@example.com')?.originalLanguage,null);
+    assert.equal(features.saveLyrics('track1','two@example.com','und',{ru:'translation'}),true);
+    assert.equal(features.lyrics('track1','two@example.com')?.originalLanguage,null);
     assert.equal(features.saveLyrics('missing','one@example.com','en',{en:'x',ru:'y'}),false);
     assert.equal(features.saveLyrics('track1','one@example.com','fr',{fr:'lyrics',ru:'translation'}),true);
     store.import({generatedAt:'2026-01-02T00:00:00.000Z',tracks:[track]});

@@ -124,12 +124,12 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
   await expect(page.getByText('Saved',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Close details'}).click();
   await page.getByRole('button', {name:'Fictional song 0000',exact:true}).click();
-  await page.getByRole('button',{name:'Edit',exact:true}).click();await expect(page.getByLabel('Lyrics en',{exact:true})).toHaveValue('Some lyrics');
-  await page.getByRole('tab',{name:'ru',exact:true}).click();await expect(page.getByLabel('Lyrics ru',{exact:true})).toHaveValue('Some translation');
-  await page.getByRole('button',{name:'Add language'}).click();await page.getByLabel('Language code').fill('fr');await page.getByRole('button',{name:'Add',exact:true}).click();
+  await page.getByRole('button',{name:'Edit lyrics',exact:true}).click();await expect(page.getByLabel('Lyrics en',{exact:true})).toHaveValue('Some lyrics');
+  await expect(page.getByLabel('Lyrics ru',{exact:true})).toHaveValue('Some translation');
+  await page.getByRole('button',{name:'Add language'}).click();await page.getByRole('combobox',{name:'Language',exact:true}).click();await page.getByRole('option',{name:'French',exact:true}).click();await page.getByRole('button',{name:'Add',exact:true}).click();
   await page.getByRole('combobox',{name:'Original language'}).click();await page.getByRole('option',{name:'French',exact:true}).click();
   await page.getByLabel('Lyrics fr',{exact:true}).fill('Paroles');await page.getByRole('button',{name:'Save lyrics'}).click();await expect(page.getByText('Saved',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Close details'}).click();await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();await expect(page.getByRole('combobox',{name:'Original language'})).toHaveText('fr');await expect(page.getByText('Paroles',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Close details'}).click();
+  await page.getByRole('button',{name:'Close details'}).click();await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();await expect(page.getByRole('combobox',{name:'Original language'})).toHaveText('fr');await page.getByRole('tab',{name:'fr',exact:true}).click();await expect(page.getByText('Paroles',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Close details'}).click();
   await page.getByRole('button',{name:'AI assistant',exact:true}).click();
   await page.getByRole('button',{name:'Agent menu'}).click();await page.getByRole('menuitem',{name:'Agent settings'}).click();
   await page.getByLabel('OpenRouter API token').fill('sample-key');
@@ -176,7 +176,7 @@ test('song languages share scrolling and panels can dock or resize', async ({pag
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'en',texts:{en:lines,ru:lines,es:''}}}));
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Song details'});const en=dialog.getByRole('tab',{name:'en',exact:true});await expect(en).not.toContainText('original');
- await dialog.getByRole('tab',{name:'ru',exact:true}).click();await dialog.getByRole('button',{name:'Edit',exact:true}).click();await expect(dialog.getByLabel('Lyrics en')).toBeVisible();await expect(dialog.getByLabel('Lyrics ru')).toBeVisible();await page.screenshot({path:'/tmp/music-shelf-song-026.png'});
+ await dialog.getByRole('button',{name:'Edit lyrics',exact:true}).click();await expect(dialog.getByLabel('Lyrics en')).toBeVisible();await expect(dialog.getByLabel('Lyrics ru')).toBeVisible();await page.screenshot({path:'/tmp/music-shelf-song-026.png'});
  const scroll=dialog.getByTestId('lyrics-scroll');expect(await scroll.evaluate(e=>e.scrollHeight>e.clientHeight)).toBe(true);await scroll.evaluate(e=>e.scrollTop=200);expect(await scroll.evaluate(e=>e.scrollTop)).toBeGreaterThan(0);await expect(dialog.getByRole('tab',{name:'en'})).toBeVisible();
  const topBefore=await dialog.getByRole('button',{name:'Close details'}).boundingBox();await scroll.evaluate(e=>e.scrollTop=400);const topAfter=await dialog.getByRole('button',{name:'Close details'}).boundingBox();expect(topAfter!.y).toBe(topBefore!.y);
  await dialog.getByRole('button',{name:'Dock left'}).click();await expect(dialog).toHaveClass(/window-left/);let widthHandle=dialog.getByRole('separator',{name:'Resize song panel'});let width=Number(await widthHandle.getAttribute('aria-valuenow'));await widthHandle.focus();await page.keyboard.press('ArrowRight');await expect(widthHandle).toHaveAttribute('aria-valuenow',String(width+24));
@@ -192,11 +192,11 @@ test('ready song metadata stays fixed while only lyrics scroll', async ({page}) 
  const track={id:'ready-song',title:'A real-shaped song',artist:'Demo Artist',album:'Demo Album',year:1968,status:'ready',file:{name:'song.flac',sizeBytes:1024,sha256:'a'.repeat(64),format:'flac',codec:'flac',sampleRate:44100,bitDepth:16,channels:2,durationSeconds:180,bitrateBps:900000}};
  await page.route('**/api/catalog?*',route=>route.fulfill({json:{generatedAt:'2026-01-01T00:00:00Z',tracks:[track],stats:{total:1,ready:1,pending:0,sizeBytes:1024},pagination:{page:1,pageSize:25,total:1,pages:1},facets:{status:['ready'],artist:['Demo Artist'],year:['1968']}}}));
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'en',texts:{en:lines,ru:lines,es:''}}}));
- await page.reload();await page.getByRole('button',{name:'A real-shaped song'}).click();const dialog=page.getByRole('dialog',{name:'Song details'});await dialog.getByRole('tab',{name:'ru',exact:true}).click();
+ await page.reload();await page.getByRole('button',{name:'A real-shaped song'}).click();const dialog=page.getByRole('dialog',{name:'Song details'});
  const scroll=dialog.getByTestId('lyrics-scroll');await expect(scroll).toBeVisible();expect(await scroll.evaluate(e=>e.scrollHeight>e.clientHeight)).toBe(true);
- const file=dialog.getByText('song.flac',{exact:true});await expect(file).toBeVisible();const before=await file.boundingBox();await scroll.evaluate(e=>e.scrollTop=500);expect((await file.boundingBox())!.y).toBe(before!.y);await expect(dialog.getByRole('button',{name:'Save lyrics'})).toBeVisible();
+ const file=dialog.getByText('song.flac',{exact:true});await expect(file).toBeVisible();const before=await file.boundingBox();await scroll.evaluate(e=>e.scrollTop=500);expect((await file.boundingBox())!.y).toBe(before!.y);await expect(dialog.getByText('Saved',{exact:true})).toBeVisible();
  await page.screenshot({path:'/tmp/music-shelf-ready-026.png'});
- await page.setViewportSize({width:390,height:844});await expect(dialog.locator('.lyrics-markdown').first()).toBeVisible();await expect(dialog.getByRole('button',{name:'Save lyrics'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.setViewportSize({width:390,height:844});await expect(dialog.locator('.lyrics-markdown').first()).toBeVisible();await expect(dialog.getByText('Saved',{exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
 
@@ -207,9 +207,8 @@ test('renders song Markdown blocks and resizes metadata independently', async ({
  await expect(dialog.getByRole('combobox',{name:'Original language'})).toHaveText('fr');
  await expect(dialog.getByRole('tab')).toHaveText(['ru','es','en','fr']);
  await dialog.getByRole('combobox',{name:'Original language'}).click();
- const options=page.getByRole('option');await expect(options.nth(0)).toHaveText('Russian');await expect(options.nth(1)).toHaveText('Spanish');await expect(options.nth(2)).toHaveText('English');await expect(options.filter({hasText:'Russian'})).toHaveCount(1);await page.keyboard.press('Escape');
- await expect(dialog.locator('.lyrics-markdown blockquote')).toContainText('Premier vers');
- await dialog.getByRole('tab',{name:'ru',exact:true}).click();
+ const options=page.getByRole('option');await expect(options.nth(0)).toHaveText('Russian');await expect(options.nth(1)).toHaveText('Spanish');await expect(options.nth(2)).toHaveText('English');await expect(options.filter({hasText:'Russian'})).toHaveCount(1);await page.keyboard.press('Escape');await expect(options.first()).not.toBeVisible();await expect(page.locator('.MuiBackdrop-invisible')).toHaveCount(0);
+ await expect(dialog.locator('.lyrics-markdown blockquote').last()).toContainText('Premier vers');
  await expect(dialog.locator('.lyrics-markdown blockquote')).toHaveCount(2);await expect(dialog.locator('.lyrics-column-heading')).toHaveCount(0);
  await expect(dialog.locator('.lyrics-column').first()).toContainText('Первая строка');await expect(dialog.locator('.lyrics-column').last()).toContainText('Premier vers');
  const metadata=dialog.locator('.song-metadata');const before=(await metadata.boundingBox())!.height;
@@ -251,4 +250,16 @@ test('edits and confirms deletion of individual translation variants',async({pag
  await expect(tip.getByLabel('Translation',{exact:true})).toHaveCount(0);await expect(tip.getByText('AI',{exact:true})).toBeVisible();
  await tip.getByRole('button',{name:'Edit translation любовь'}).click();await tip.getByLabel('Translation',{exact:true}).fill('любовь моя');await tip.getByRole('button',{name:'Save',exact:true}).click();await expect(tip).toContainText('любовь моя');await expect(tip.getByText('AI',{exact:true})).toBeVisible();
  await tip.getByRole('button',{name:'Delete translation любить'}).click();await expect(page.getByText('Delete this translation?')).toBeVisible();await page.getByRole('button',{name:'Cancel',exact:true}).click();await expect(tip).toContainText('любить');await tip.getByRole('button',{name:'Delete translation любить'}).click();await page.getByRole('button',{name:'Delete',exact:true}).click();await expect(tip).not.toContainText('любить');await expect(tip).toContainText('любовь моя');
+});
+
+test('selects up to two populated languages, resizes text columns and scrolls metadata',async({page})=>{
+ const track={id:'ready-layout',title:'Layout song',artist:'Demo Artist',album:'Demo Album',year:1968,status:'ready',file:{name:'song.flac',sizeBytes:1024,sha256:'a'.repeat(64),format:'flac',codec:'flac',sampleRate:44100,bitDepth:16,channels:2,durationSeconds:180,bitrateBps:900000}};
+ await page.route('**/api/catalog?*',route=>route.fulfill({json:{generatedAt:'2026-01-01T00:00:00Z',tracks:[track],stats:{total:1,ready:1,pending:0,sizeBytes:1024},pagination:{page:1,pageSize:25,total:1,pages:1},facets:{status:['ready'],artist:['Demo Artist'],year:['1968']}}}));
+ let text:{originalLanguage:string|null;texts:Record<string,string>}={originalLanguage:'en',texts:{en:'Original',ru:'Перевод',es:'Traducción'}};
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:text}));await page.reload();await page.getByRole('button',{name:'Layout song'}).click();let dialog=page.getByRole('dialog',{name:'Song details'});
+ await expect(dialog.getByRole('tab',{name:'ru'})).toHaveAttribute('aria-selected','true');await expect(dialog.getByRole('tab',{name:'es'})).toHaveAttribute('aria-selected','true');await expect(dialog.getByRole('tab',{name:'en'})).toHaveAttribute('aria-selected','false');
+ const left=dialog.locator('.lyrics-column').first(),right=dialog.locator('.lyrics-column').last();const before=(await left.boundingBox())!.width;const beforeRight=(await right.boundingBox())!.width;const handle=dialog.getByRole('separator',{name:'Resize ru and es texts'});const rect=(await handle.boundingBox())!;
+ await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.mouse.move(rect.x+rect.width/2+40,rect.y+rect.height/2,{steps:5});await page.mouse.up();expect((await left.boundingBox())!.width).toBeGreaterThan(before+25);expect((await right.boundingBox())!.width).toBeLessThan(beforeRight-25);
+ const divider=dialog.getByRole('separator',{name:'Resize song information and lyrics'});await divider.focus();for(let i=0;i<15;i++)await page.keyboard.press('ArrowUp');const metadata=dialog.locator('.song-metadata');expect(await metadata.evaluate(e=>e.scrollHeight>e.clientHeight)).toBe(true);await metadata.evaluate(e=>e.scrollTop=100);expect(await metadata.evaluate(e=>e.scrollTop)).toBeGreaterThan(0);
+ await dialog.getByRole('button',{name:'Close details'}).click();await expect(dialog).toHaveCount(0);text={originalLanguage:null,texts:{en:'',ru:'',es:''}};await page.getByRole('button',{name:'Layout song'}).click();dialog=page.getByRole('dialog',{name:'Song details'});await expect(dialog).toBeVisible();await expect(dialog.getByRole('tab',{name:'en'})).toBeVisible();await expect(dialog.getByRole('tab',{selected:true})).toHaveCount(0);await dialog.getByRole('button',{name:'Close details'}).click();await expect(dialog).toHaveCount(0);text={originalLanguage:'en',texts:{en:'',ru:'Only translation',es:''}};await page.getByRole('button',{name:'Layout song'}).click();await expect(page.getByRole('tab',{selected:true})).toHaveCount(1);await expect(page.getByRole('tab',{name:'ru'})).toHaveAttribute('aria-selected','true');
 });

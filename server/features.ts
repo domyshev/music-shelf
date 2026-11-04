@@ -32,11 +32,11 @@ export class Features {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return null;
     const row = this.db.prepare('SELECT original_language, texts FROM track_text_languages WHERE track_id=? AND email=?').get(id, email) as {original_language:string;texts:string}|undefined;
     const explicit = this.db.prepare('SELECT language FROM track_original_languages WHERE track_id=?').get(id) as {language:string}|undefined;
-    const legacyLanguages = this.db.prepare('SELECT DISTINCT original_language FROM track_text_languages WHERE track_id=?').all(id) as {original_language:string}[];
-    const originalLanguage = explicit?.language ?? (legacyLanguages.length === 1 ? legacyLanguages[0].original_language : 'en');
+    const legacyLanguages = this.db.prepare("SELECT DISTINCT original_language FROM track_text_languages WHERE track_id=? AND original_language<>'und'").all(id) as {original_language:string}[];
+    const originalLanguage = explicit?.language ?? (legacyLanguages.length === 1 ? legacyLanguages[0].original_language : null);
     if (row) return {originalLanguage,texts:JSON.parse(row.texts)};
     const legacy=this.db.prepare('SELECT lyrics, translation FROM track_texts WHERE track_id=? AND email=?').get(id,email) as {lyrics:string;translation:string}|undefined;
-    return {originalLanguage,texts:{en:legacy?.lyrics ?? '',ru:'',es:'',...(legacy?.translation?{und:legacy.translation}:{})}};
+    return {originalLanguage:originalLanguage ?? (legacy?.lyrics ? 'en' : null),texts:{en:legacy?.lyrics ?? '',ru:'',es:'',...(legacy?.translation?{und:legacy.translation}:{})}};
   }
   saveLyrics(id: string, email: string, originalLanguage: string, texts: Record<string,string>) {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return false;

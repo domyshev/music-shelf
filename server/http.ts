@@ -75,7 +75,7 @@ export function createApp(options: AppOptions) {
     const parsed=z.object({originalLanguage:code.optional(),texts:z.record(code,z.string().max(50000))}).strict().refine(value=>Object.keys(value.texts).length<=12);
     const data=parsed.safeParse(request.body);
     if (!data.success) { response.status(400).json({error:'Invalid song text'}); return; }
-    if (!options.features?.saveLyrics(String(request.params.id),response.locals.email,data.data.originalLanguage ?? options.features.lyrics(String(request.params.id),response.locals.email)?.originalLanguage ?? 'en',data.data.texts)) { response.status(404).json({error:'Song not found'}); return; }
+    if (!options.features?.saveLyrics(String(request.params.id),response.locals.email,data.data.originalLanguage ?? options.features.lyrics(String(request.params.id),response.locals.email)?.originalLanguage ?? 'und',data.data.texts)) { response.status(404).json({error:'Song not found'}); return; }
     response.json({ok:true});
   });
   app.get('/api/tracks/:id/words', authorize, (request,response) => {
