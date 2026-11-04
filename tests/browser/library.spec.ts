@@ -127,7 +127,7 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
   await page.getByRole('button',{name:'Edit',exact:true}).click();await expect(page.getByLabel('Lyrics en',{exact:true})).toHaveValue('Some lyrics');
   await page.getByRole('tab',{name:'ru',exact:true}).click();await expect(page.getByLabel('Lyrics ru',{exact:true})).toHaveValue('Some translation');
   await page.getByRole('button',{name:'Add language'}).click();await page.getByLabel('Language code').fill('fr');await page.getByRole('button',{name:'Add',exact:true}).click();
-  await page.getByRole('combobox',{name:'Original language'}).click();await page.getByRole('option',{name:'fr',exact:true}).click();
+  await page.getByRole('combobox',{name:'Original language'}).click();await page.getByRole('option',{name:'French',exact:true}).click();
   await page.getByLabel('Lyrics fr',{exact:true}).fill('Paroles');await page.getByRole('button',{name:'Save lyrics'}).click();await expect(page.getByText('Saved',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Close details'}).click();await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();await expect(page.getByRole('combobox',{name:'Original language'})).toHaveText('fr');await expect(page.getByText('Paroles',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Close details'}).click();
   await page.getByRole('button',{name:'AI assistant',exact:true}).click();
@@ -205,12 +205,17 @@ test('renders song Markdown blocks and resizes metadata independently', async ({
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Song details'});
  await expect(dialog.getByRole('combobox',{name:'Original language'})).toHaveText('fr');
+ await expect(dialog.getByRole('tab')).toHaveText(['ru','es','en','fr']);
+ await dialog.getByRole('combobox',{name:'Original language'}).click();
+ const options=page.getByRole('option');await expect(options.nth(0)).toHaveText('Russian');await expect(options.nth(1)).toHaveText('Spanish');await expect(options.nth(2)).toHaveText('English');await expect(options.filter({hasText:'Russian'})).toHaveCount(1);await page.keyboard.press('Escape');
  await expect(dialog.locator('.lyrics-markdown blockquote')).toContainText('Premier vers');
  await dialog.getByRole('tab',{name:'ru',exact:true}).click();
- await expect(dialog.locator('.lyrics-markdown blockquote')).toHaveCount(2);
+ await expect(dialog.locator('.lyrics-markdown blockquote')).toHaveCount(2);await expect(dialog.locator('.lyrics-column-heading')).toHaveCount(0);
+ await expect(dialog.locator('.lyrics-column').first()).toContainText('Первая строка');await expect(dialog.locator('.lyrics-column').last()).toContainText('Premier vers');
  const metadata=dialog.locator('.song-metadata');const before=(await metadata.boundingBox())!.height;
  const divider=dialog.getByRole('separator',{name:'Resize song information and lyrics'});const rect=(await divider.boundingBox())!;
  await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2+70,{steps:5});await page.mouse.up();
  expect((await metadata.boundingBox())!.height).toBeGreaterThan(before+50);
- await divider.focus();await page.keyboard.press('ArrowUp');expect((await metadata.boundingBox())!.height).toBeLessThan(before+60);
+ await divider.focus();await page.keyboard.press('ArrowUp');const savedHeight=(await metadata.boundingBox())!.height;expect(savedHeight).toBeLessThan(before+60);
+ await dialog.getByRole('button',{name:'Close details'}).click();await page.getByRole('button',{name:'Fictional song 0001',exact:true}).click();await expect(page.locator('.song-metadata')).toHaveCSS('height',`${savedHeight}px`);await page.reload();await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();await expect(page.locator('.song-metadata')).toHaveCSS('height',`${savedHeight}px`);
 });
