@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Box, IconButton, Modal, Tooltip, Typography } from '@mui/material';
+import { Box, IconButton, Modal, SvgIcon, Tooltip, Typography } from '@mui/material';
 import CloseRounded from '@mui/icons-material/CloseRounded';
-import FirstPageRounded from '@mui/icons-material/FirstPageRounded';
-import LastPageRounded from '@mui/icons-material/LastPageRounded';
 import CropSquareRounded from '@mui/icons-material/CropSquareRounded';
+
+function DockIcon({ side }: { side: 'left' | 'right' }) {
+  return <SvgIcon><rect x="3" y="4" width="18" height="16" rx="1" fill="none" stroke="currentColor" strokeWidth="2" /><path d={side === 'left' ? 'M9 4v16' : 'M15 4v16'} fill="none" stroke="currentColor" strokeWidth="2" /></SvgIcon>;
+}
 
 type Placement='left'|'right'|'modal';
 const read=(key:string,fallback:string)=>{try{return localStorage.getItem(key)??fallback;}catch{return fallback;}};
@@ -30,9 +32,9 @@ export function WindowFrame({open,onClose,id,defaultPlacement,title,actions,chil
   return <Modal open={open} disableEnforceFocus={allowExternalFocus} onClose={(_event,reason)=>{if(reason==='escapeKeyDown'&&document.querySelector('[role="tooltip"]'))return;onClose();}} keepMounted={false}>
     <Box role="dialog" aria-modal="true" aria-label={id==='song'?'Song details':'AI assistant'} className={`window-frame window-${placement}`} sx={{width:{xs:'100%',sm:visibleWidth},height:placement==='modal'?{xs:'100%',sm:visibleHeight}:'100%',maxWidth:'100%',maxHeight:'100%'}}>
       <Box className="window-header"><Typography component="div" variant="h6" sx={{flex:1,minWidth:0,overflowWrap:'anywhere'}}>{title}</Typography>{actions}
-        <Tooltip title="Dock left"><IconButton aria-label="Dock left" aria-pressed={placement==='left'} onClick={()=>setMode('left')}><FirstPageRounded /></IconButton></Tooltip>
+        <Tooltip title="Dock left"><IconButton aria-label="Dock left" aria-pressed={placement==='left'} onClick={()=>setMode('left')}><DockIcon side="left" /></IconButton></Tooltip>
         <Tooltip title="Open as dialog"><IconButton aria-label="Open as dialog" aria-pressed={placement==='modal'} onClick={()=>setMode('modal')}><CropSquareRounded /></IconButton></Tooltip>
-        <Tooltip title="Dock right"><IconButton aria-label="Dock right" aria-pressed={placement==='right'} onClick={()=>setMode('right')}><LastPageRounded /></IconButton></Tooltip>
+        <Tooltip title="Dock right"><IconButton aria-label="Dock right" aria-pressed={placement==='right'} onClick={()=>setMode('right')}><DockIcon side="right" /></IconButton></Tooltip>
         <IconButton aria-label={id==='song'?'Close details':'Close AI'} onClick={onClose}><CloseRounded /></IconButton>
       </Box>
       {children}

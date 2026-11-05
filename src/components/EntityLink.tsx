@@ -27,8 +27,8 @@ export function EntityLink({ kind, name, preview = false, ellipsis = false }: { 
         onClick={event => { event.stopPropagation(); setPreviewOpen(false); setDialogOpen(true); }}>{name}</ButtonBase>
     </Tooltip>
     {dialogOpen && <Dialog open onClose={() => setDialogOpen(false)} fullWidth maxWidth="xs" aria-labelledby={titleId}>
-      <DialogTitle sx={{ fontSize: 14, pr: 6 }}><Box component="span" sx={{position:'absolute',width:'1px',height:'1px',p:0,m:'-1px',overflow:'hidden',clip:'rect(0, 0, 0, 0)',whiteSpace:'nowrap',border:0}}>{label}: {name}</Box><span aria-hidden="true">{label}</span></DialogTitle><IconButton aria-label={`Close ${kind} card`} onClick={() => setDialogOpen(false)} sx={{ position: 'absolute', right: 12, top: 12 }}><CloseRounded fontSize="small" /></IconButton>
-      <DialogContent><Typography sx={{ fontSize: 18, overflowWrap: 'anywhere' }}>{name}</Typography></DialogContent>
+      <DialogTitle sx={{ fontSize: 14, pr: 6, pb: 0 }}><Box component="span" sx={{position:'absolute',width:'1px',height:'1px',p:0,m:'-1px',overflow:'hidden',clip:'rect(0, 0, 0, 0)',whiteSpace:'nowrap',border:0}}>{label}: {name}</Box><span aria-hidden="true">{label}</span></DialogTitle><IconButton aria-label={`Close ${kind} card`} onClick={() => setDialogOpen(false)} sx={{ position: 'absolute', right: 12, top: 12 }}><CloseRounded fontSize="small" /></IconButton>
+      <DialogContent sx={{ pt: 1 }}><Typography sx={{ fontSize: 18, overflowWrap: 'anywhere' }}>{name}</Typography></DialogContent>
     </Dialog>}
   </>;
 }
