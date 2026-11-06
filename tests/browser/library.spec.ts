@@ -271,6 +271,20 @@ test('truncates long lyrics lines inside blocks without changing their height',a
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Song details'});const blocks=dialog.locator('.lyrics-markdown blockquote');await expect(blocks).toHaveCount(2);
  const shorter=await blocks.nth(0).boundingBox(),longer=await blocks.nth(1).boundingBox();expect(longer!.height).toBeCloseTo(shorter!.height,0);
- const paragraph=blocks.nth(1).locator('p');await expect(paragraph).toHaveCSS('white-space','pre');await expect(paragraph).toHaveCSS('text-overflow','ellipsis');expect(await paragraph.evaluate(e=>e.scrollWidth>e.clientWidth)).toBe(true);
+ const line=blocks.nth(1).locator('.lyrics-line').first();await expect(line).toHaveCSS('white-space','pre');await expect(line).toHaveCSS('text-overflow','ellipsis');expect(await line.evaluate(e=>e.scrollWidth>e.clientWidth)).toBe(true);await line.hover();const tooltip=page.getByRole('tooltip');await expect(tooltip).toHaveText(long.trim());await expect(tooltip.locator('.MuiTooltip-arrow')).toBeVisible();await page.mouse.move(5,5);await expect(tooltip).toHaveCount(0);await blocks.nth(0).locator('.lyrics-line').first().hover();await expect(page.getByRole('tooltip')).toHaveCount(0);
  await dialog.getByRole('button',{name:'Edit lyrics'}).click();await expect(dialog.getByLabel('Lyrics en')).toHaveValue(`> ${long}\n> Second line`);
+});
+
+
+test('uses distinct natural colors per language and alternates block intensity',async({page})=>{
+ const text='> First line\n> Second line\n\n> Third line\n> Fourth line';
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'en',texts:{ru:text,es:text,en:text}}}));
+ await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();
+ let dialog=page.getByRole('dialog',{name:'Song details'});let ru=dialog.locator('[data-language="ru"] blockquote'),es=dialog.locator('[data-language="es"] blockquote');
+ await expect(ru).toHaveCount(2);await expect(es).toHaveCount(2);
+ const color=async(locator:typeof ru)=>locator.evaluate(e=>getComputedStyle(e).backgroundColor);
+ const lightRu=await color(ru.first()),lightEs=await color(es.first());expect(lightRu).not.toBe(lightEs);expect(await color(ru.nth(1))).not.toBe(lightRu);expect(await color(es.nth(1))).not.toBe(lightEs);
+ await dialog.getByRole('tab',{name:'ru'}).click();await dialog.getByRole('tab',{name:'ru'}).click();expect(await color(ru.first())).toBe(lightRu);
+ await dialog.getByRole('button',{name:'Close details'}).click();await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('button',{name:'Dark theme'}).click();await page.keyboard.press('Escape');await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();
+ dialog=page.getByRole('dialog',{name:'Song details'});ru=dialog.locator('[data-language="ru"] blockquote');es=dialog.locator('[data-language="es"] blockquote');await expect(ru).toHaveCount(2);await expect(es).toHaveCount(2);const darkRu=await color(ru.first()),darkEs=await color(es.first());expect(darkRu).not.toBe(darkEs);expect(darkRu).not.toBe(lightRu);expect(await color(ru.nth(1))).not.toBe(darkRu);
 });
