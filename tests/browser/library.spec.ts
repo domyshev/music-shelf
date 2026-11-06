@@ -263,3 +263,14 @@ test('selects up to two populated languages, resizes text columns and scrolls me
  const divider=dialog.getByRole('separator',{name:'Resize song information and lyrics'});await divider.focus();for(let i=0;i<15;i++)await page.keyboard.press('ArrowUp');const metadata=dialog.locator('.song-metadata');expect(await metadata.evaluate(e=>e.scrollHeight>e.clientHeight)).toBe(true);await metadata.evaluate(e=>e.scrollTop=100);expect(await metadata.evaluate(e=>e.scrollTop)).toBeGreaterThan(0);
  await dialog.getByRole('button',{name:'Close details'}).click();await expect(dialog).toHaveCount(0);text={originalLanguage:null,texts:{en:'',ru:'',es:''}};await page.getByRole('button',{name:'Layout song'}).click();dialog=page.getByRole('dialog',{name:'Song details'});await expect(dialog).toBeVisible();await expect(dialog.getByRole('tab',{name:'en'})).toBeVisible();await expect(dialog.getByRole('tab',{selected:true})).toHaveCount(0);await dialog.getByRole('button',{name:'Close details'}).click();await expect(dialog).toHaveCount(0);text={originalLanguage:'en',texts:{en:'',ru:'Only translation',es:''}};await page.getByRole('button',{name:'Layout song'}).click();await expect(page.getByRole('tab',{selected:true})).toHaveCount(1);await expect(page.getByRole('tab',{name:'ru'})).toHaveAttribute('aria-selected','true');
 });
+
+
+test('truncates long lyrics lines inside blocks without changing their height',async({page})=>{
+ const long='A very long line of lyrics '.repeat(12);
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'en',texts:{ru:'> Короткая строка\n> Ещё строка',en:`> ${long}\n> Second line`,es:''}}}));
+ await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Song details'});const blocks=dialog.locator('.lyrics-markdown blockquote');await expect(blocks).toHaveCount(2);
+ const shorter=await blocks.nth(0).boundingBox(),longer=await blocks.nth(1).boundingBox();expect(longer!.height).toBeCloseTo(shorter!.height,0);
+ const paragraph=blocks.nth(1).locator('p');await expect(paragraph).toHaveCSS('white-space','pre');await expect(paragraph).toHaveCSS('text-overflow','ellipsis');expect(await paragraph.evaluate(e=>e.scrollWidth>e.clientWidth)).toBe(true);
+ await dialog.getByRole('button',{name:'Edit lyrics'}).click();await expect(dialog.getByLabel('Lyrics en')).toHaveValue(`> ${long}\n> Second line`);
+});
