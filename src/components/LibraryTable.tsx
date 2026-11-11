@@ -5,7 +5,7 @@ import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Track } from '../../shared/catalog';
 import { uiActions, useAppDispatch, useAppSelector } from '../store';
-import { formatRate, formatSize } from '../format';
+import { formatDate, formatRate, formatSize } from '../format';
 import { Status } from './Status';
 import { OverflowTooltip } from './OverflowTooltip';
 import { EntityLink } from './EntityLink';
@@ -30,6 +30,8 @@ export function LibraryTable({ tracks, total, facets, tagsByTrack }: { tracks: T
     helper.accessor(row => row.file?.bitDepth || undefined, { id: 'bitDepth', header: 'Bits', size: 72, sortUndefined: 'last', cell: info => info.getValue() ?? '—' }),
     helper.accessor(row => row.file?.sizeBytes ?? undefined, { id: 'sizeBytes', header: 'Size', size: 110, sortUndefined: 'last', cell: info => formatSize(info.getValue()) }),
     helper.display({ id: 'tags', header: 'Tags', size: 220, enableSorting: false, cell: info => { const tags=tagsByTrack?.[info.row.original.id] ?? []; return tags.length ? <Tooltip arrow title={tags.map(tag=>tag.name).join(', ')}><Box sx={{display:'flex',gap:.5,overflow:'hidden'}}>{tags.map(tag=><Chip key={tag.id} size="small" variant="outlined" label={tag.name} sx={{height:23,maxWidth:'100%',fontSize:11}} />)}</Box></Tooltip> : '—'; } }),
+    helper.accessor('queuedAt', { header: 'Queued at', size: 175, sortUndefined: 'last', cell: info => info.getValue() ? formatDate(info.getValue()!) : '—' }),
+    helper.accessor('completedAt', { header: 'Downloaded at', size: 175, sortUndefined: 'last', cell: info => info.getValue() ? formatDate(info.getValue()!) : '—' }),
   ], [dispatch,tagsByTrack]);
   const table = useReactTable({
     data: tracks, columns, defaultColumn: { minSize: 64, maxSize: 1200, filterFn: (row, id, selected: string[]) => selected.includes(String(row.getValue(id) ?? '')) },

@@ -74,7 +74,7 @@ export const catalogQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
   pageSize: z.coerce.number().int().min(1).max(250).default(100),
   q: z.string().max(1000).default(''),
-  sort: z.enum(['position', 'status', 'title', 'artist', 'year', 'sampleRate', 'bitDepth', 'sizeBytes', 'attempts']).default('position'),
+  sort: z.enum(['position', 'status', 'title', 'artist', 'year', 'sampleRate', 'bitDepth', 'sizeBytes', 'attempts', 'queuedAt', 'completedAt']).default('position'),
   direction: z.enum(['asc', 'desc']).default('asc'),
   filters: z.object({
     status: z.array(z.enum(['ready', 'pending'])).max(2).optional(),

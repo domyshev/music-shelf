@@ -44,7 +44,7 @@ export class CatalogStore {
     const total = Number((this.db.prepare(`SELECT COUNT(*) AS total FROM tracks${where}`).get(...values) as { total: number }).total);
     const sortFields: Record<CatalogQuery['sort'], string> = {
       position: 'position', status: "json_extract(payload, '$.status')", title: "json_extract(payload, '$.title') COLLATE NOCASE", artist: "json_extract(payload, '$.artist') COLLATE NOCASE",
-      year: "json_extract(payload, '$.year')", sampleRate: "json_extract(payload, '$.file.sampleRate')", bitDepth: "json_extract(payload, '$.file.bitDepth')", sizeBytes: "json_extract(payload, '$.file.sizeBytes')", attempts: "json_extract(payload, '$.attempts')",
+      year: "json_extract(payload, '$.year')", sampleRate: "json_extract(payload, '$.file.sampleRate')", bitDepth: "json_extract(payload, '$.file.bitDepth')", sizeBytes: "json_extract(payload, '$.file.sizeBytes')", attempts: "json_extract(payload, '$.attempts')", queuedAt: "json_extract(payload, '$.queuedAt')", completedAt: "json_extract(payload, '$.completedAt')",
     };
     const expression = sortFields[query.sort];
     const direction = query.direction === 'desc' ? 'DESC' : 'ASC';

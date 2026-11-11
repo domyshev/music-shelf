@@ -3,7 +3,7 @@ import { Box, Checkbox, IconButton, List, ListItemButton, ListItemText, Popover,
 import ViewColumnOutlined from '@mui/icons-material/ViewColumnOutlined';
 import { columnIds, uiActions, useAppDispatch, useAppSelector } from '../store';
 
-const labels:Record<string,string>={status:'Status',title:'Song',artist:'Artist / band',year:'Year',sampleRate:'kHz',bitDepth:'Bits',sizeBytes:'Size',attempts:'Attempts',tags:'Tags'};
+const labels:Record<string,string>={status:'Status',title:'Song',artist:'Artist / band',year:'Year',sampleRate:'kHz',bitDepth:'Bits',sizeBytes:'Size',attempts:'Attempts',tags:'Tags',queuedAt:'Queued at',completedAt:'Downloaded at'};
 export function ColumnChooser() {
   const [anchor,setAnchor]=useState<HTMLElement|null>(null);const dispatch=useAppDispatch();
   const {columnOrder,columnVisibility}=useAppSelector(state=>state.ui);

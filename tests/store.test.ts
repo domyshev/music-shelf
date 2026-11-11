@@ -135,3 +135,15 @@ test('attempt counts survive catalog snapshots for ready and pending tracks and 
   const page=store.catalogPage({page:1,pageSize:25,q:'',sort:'attempts',direction:'desc',filters:{}});assert.deepEqual(page.tracks.map(track=>[track.id,track.attempts]),[['pending',101],['ready',4],['legacy',undefined]]);assert.throws(()=>snapshotSchema.parse({generatedAt:at(1),tracks:[{...pending,attempts:-1}]}));
  }finally{store.close();}
 });
+
+test('queue and completion dates sort across the catalog with unknown dates last',()=>{
+ const store=new CatalogStore(':memory:');try{
+  store.import({generatedAt:at(4),tracks:[{...pending,id:'old',queuedAt:at(0),status:'ready',file:exampleFile,completedAt:at(2)},{...pending,id:'new',queuedAt:at(1),status:'ready',file:exampleFile,completedAt:at(3)},{...pending,id:'unknown'}]});
+  for(const sort of ['queuedAt','completedAt'] as const){
+   const base={page:1,pageSize:2,q:'',sort,filters:{}};
+   assert.deepEqual(store.catalogPage({...base,direction:'asc'}).tracks.map(track=>track.id),['old','new']);
+   assert.deepEqual(store.catalogPage({...base,direction:'desc'}).tracks.map(track=>track.id),['new','old']);
+   assert.deepEqual(store.catalogPage({...base,page:2,direction:'desc'}).tracks.map(track=>track.id),['unknown']);
+  }
+ }finally{store.close();}
+});
