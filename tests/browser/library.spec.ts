@@ -55,6 +55,22 @@ test('persists page size and current page, and clamps stale pages', async ({page
   await page.evaluate(()=>{const key='music-shelf.preferences';const value=JSON.parse(localStorage.getItem(key)!);value.page=99;localStorage.setItem(key,JSON.stringify(value));});
   await page.reload();await expect(page.getByText('4,001–5,000 of 5,000')).toBeVisible();
 });
+test('configures all column filters from the search toolbar and resets them',async({page})=>{
+  await page.getByRole('button',{name:'Filters',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Configure filters'}).click();
+  const dialog=page.getByRole('dialog',{name:'Configure filters'});
+  await expect(dialog.getByLabel('Status')).toBeVisible();await expect(dialog.getByLabel('Artist / band')).toBeVisible();await expect(dialog.getByLabel('Year')).toBeVisible();
+  await dialog.getByLabel('Status').click();await page.getByRole('option',{name:'pending'}).click();await page.keyboard.press('Escape');
+  await dialog.getByLabel('Artist / band').click();await page.getByRole('option',{name:'Demo Artist 1'}).click();await page.keyboard.press('Escape');
+  await dialog.getByLabel('Year').click();await page.getByRole('option',{name:'1960'}).click();
+  await page.keyboard.press('Escape');await page.keyboard.press('Escape');
+  await expect(page.getByRole('button',{name:'Filters',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect.poll(async()=>page.evaluate(()=>JSON.parse(localStorage.getItem('music-shelf.preferences')!).columnFilters.length)).toBe(3);
+  await page.reload();await expect(page.getByRole('button',{name:'Filters',exact:true})).toHaveAttribute('aria-pressed','true');
+  await page.getByRole('button',{name:'Filters',exact:true}).click();await page.getByRole('menuitem',{name:'Reset all filters'}).click();
+  await expect(page.getByRole('button',{name:'Filters',exact:true})).toHaveAttribute('aria-pressed','false');
+  await expect.poll(async()=>page.evaluate(()=>JSON.parse(localStorage.getItem('music-shelf.preferences')!).columnFilters.length)).toBe(0);
+});
 test('opens newest-first history and keeps logout inside the menu', async ({ page }) => {
   await expect(page.getByRole('menuitem', { name: 'Sign out' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Download history' }).click();
