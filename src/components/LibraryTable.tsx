@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Button, ButtonBase, Checkbox, IconButton, List, ListItemButton, ListItemText, Popover, Table, TableBody, TableCell, TableHead, TableRow, TableSortLabel, TablePagination, Typography } from '@mui/material';
+import { Box, Button, ButtonBase, Checkbox, Chip, IconButton, List, ListItemButton, ListItemText, Popover, Table, TableBody, TableCell, TableHead, TableRow, TableSortLabel, TablePagination, Tooltip, Typography } from '@mui/material';
 import FilterAltOutlined from '@mui/icons-material/FilterAltOutlined';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -13,7 +13,7 @@ import { EntityLink } from './EntityLink';
 const helper = createColumnHelper<Track>();
 const filterIds = new Set(['status', 'artist', 'year']);
 const rightAligned = new Set(['sampleRate', 'bitDepth', 'sizeBytes', 'year', 'attempts']);
-export function LibraryTable({ tracks, total, facets }: { tracks: Track[]; total: number; facets?: { status: string[]; artist: string[]; year: string[] } }) {
+export function LibraryTable({ tracks, total, facets, tagsByTrack }: { tracks: Track[]; total: number; facets?: { status: string[]; artist: string[]; year: string[] }; tagsByTrack?: Record<string,{id:string;name:string}[]> }) {
   const dispatch = useAppDispatch();
   const { sorting, columnOrder, columnSizing, columnVisibility, columnFilters, page, pageSize } = useAppSelector(state => state.ui);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -29,7 +29,8 @@ export function LibraryTable({ tracks, total, facets }: { tracks: Track[]; total
     helper.accessor(row => row.file?.sampleRate ?? undefined, { id: 'sampleRate', header: 'kHz', size: 82, sortUndefined: 'last', cell: info => formatRate(info.getValue()) }),
     helper.accessor(row => row.file?.bitDepth || undefined, { id: 'bitDepth', header: 'Bits', size: 72, sortUndefined: 'last', cell: info => info.getValue() ?? '—' }),
     helper.accessor(row => row.file?.sizeBytes ?? undefined, { id: 'sizeBytes', header: 'Size', size: 110, sortUndefined: 'last', cell: info => formatSize(info.getValue()) }),
-  ], [dispatch]);
+    helper.display({ id: 'tags', header: 'Tags', size: 220, enableSorting: false, cell: info => { const tags=tagsByTrack?.[info.row.original.id] ?? []; return tags.length ? <Tooltip arrow title={tags.map(tag=>tag.name).join(', ')}><Box sx={{display:'flex',gap:.5,overflow:'hidden'}}>{tags.map(tag=><Chip key={tag.id} size="small" variant="outlined" label={tag.name} sx={{height:23,maxWidth:'100%',fontSize:11}} />)}</Box></Tooltip> : '—'; } }),
+  ], [dispatch,tagsByTrack]);
   const table = useReactTable({
     data: tracks, columns, defaultColumn: { minSize: 64, maxSize: 1200, filterFn: (row, id, selected: string[]) => selected.includes(String(row.getValue(id) ?? '')) },
     state: { sorting, columnOrder, columnSizing, columnVisibility, columnFilters }, manualFiltering: true, manualSorting: true, manualPagination: true, rowCount: total, enableMultiSort: false, getRowId: row => row.id,
@@ -81,7 +82,7 @@ export function LibraryTable({ tracks, total, facets }: { tracks: Track[]; total
                 onPointerUp={event => { const drag = dragRef.current; if (drag?.moved) moveColumn(drag.id, drag.target); dragRef.current = null; setDropTarget(null); if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
                 onPointerCancel={() => { dragRef.current = null; setDropTarget(null); }}
                 onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); const neighbor = columnOrder[columnOrder.indexOf(id) + (event.key === 'ArrowLeft' ? -1 : 1)]; if (neighbor) moveColumn(id, neighbor); } }}><span className="six-dots" /></button>
-              <TableSortLabel className="header-sort" active={!!header.column.getIsSorted()} direction={header.column.getIsSorted() || 'asc'} onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}</TableSortLabel>
+              {header.column.getCanSort() ? <TableSortLabel className="header-sort" active={!!header.column.getIsSorted()} direction={header.column.getIsSorted() || 'asc'} onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}</TableSortLabel> : <span className="header-sort">{flexRender(header.column.columnDef.header, header.getContext())}</span>}
               {filterIds.has(id) && <IconButton aria-label={`Filter: ${header.column.columnDef.header}`} aria-pressed={header.column.getIsFiltered()} className={`column-filter ${header.column.getIsFiltered() ? 'active' : ''}`} onClick={event => setFilterAnchor({ element: event.currentTarget, id })}><FilterAltOutlined sx={{ fontSize: 15 }} /></IconButton>}
               <div role="separator" aria-label={`Column width: ${header.column.columnDef.header}`} aria-orientation="vertical" aria-valuenow={header.column.getSize()} aria-valuemin={header.column.columnDef.minSize ?? 64} aria-valuemax={1200} tabIndex={0} className={`column-resizer ${header.column.getIsResizing() ? 'resizing' : ''}`} onMouseDown={header.getResizeHandler()} onTouchStart={header.getResizeHandler()} onDoubleClick={() => header.column.resetSize()} onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); dispatch(uiActions.setColumnSizing({ ...columnSizing, [id]: Math.max(header.column.columnDef.minSize ?? 64, Math.min(1200, header.column.getSize() + (event.key === 'ArrowRight' ? 16 : -16))) })); } }} />
             </div>

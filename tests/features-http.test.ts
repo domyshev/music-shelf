@@ -16,6 +16,14 @@ test('new endpoints require sessions and same origin, and keep credentials priva
  const one=signIn('one@example.invalid'),two=signIn('two@example.invalid');const server=createApp({store,auth,features,mailer:{async send(){}},origin:'http://test.invalid'}).listen(0,'127.0.0.1');await once(server,'listening');const base=`http://127.0.0.1:${(server.address() as AddressInfo).port}`;
  const put=(cookie:string,origin:string,body:object)=>({method:'PUT',headers:{Cookie:cookie,Origin:origin,'Content-Type':'application/json'},body:JSON.stringify(body)});
  try{
+  const tag=features.tags.create('one@example.invalid','moon.dust','A selection',{},['song']);
+  features.tags.create('two@example.invalid','other.dust','Other selection',{},['song']);
+  const oneCatalog=await (await fetch(base+'/api/catalog',{headers:{Cookie:one}})).json();
+  const twoCatalog=await (await fetch(base+'/api/catalog',{headers:{Cookie:two}})).json();
+  assert.deepEqual(oneCatalog.tagsByTrack,{song:[{id:tag.id,name:tag.name}]});
+  assert.equal(twoCatalog.tagsByTrack.song.length,1);
+  assert.notEqual(twoCatalog.tagsByTrack.song[0].id,tag.id);
+  assert.equal(JSON.stringify(oneCatalog.tagsByTrack).includes('Other selection'),false);
   assert.equal((await fetch(base+'/api/ai/settings')).status,401);
   assert.equal((await fetch(base+'/api/ai/settings',put(one,'http://evil.invalid',{model:'a/b',token:'sensitive'}))).status,403);
   const saved=await fetch(base+'/api/ai/settings',put(one,'http://test.invalid',{model:'a/b',token:'sensitive'}));assert.equal(saved.status,200);assert.equal((await saved.text()).includes('sensitive'),false);

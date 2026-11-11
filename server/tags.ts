@@ -54,4 +54,13 @@ export class Tags {
     const rows = this.db.prepare('SELECT id FROM selection_tags WHERE owner=? ORDER BY created_at DESC, rowid DESC').all(owner) as {id:string}[];
     return rows.map(row => this.get(owner, row.id)!);
   }
+
+  forTracks(owner: string, trackIds: string[]) {
+    const result: Record<string, {id:string;name:string}[]> = Object.create(null);
+    if (!trackIds.length) return result;
+    const placeholders = trackIds.map(() => '?').join(',');
+    const rows = this.db.prepare(`SELECT m.track_id AS trackId, t.id, t.name FROM selection_tag_tracks m JOIN selection_tags t ON t.id=m.tag_id WHERE t.owner=? AND m.track_id IN (${placeholders}) ORDER BY t.created_at, t.id`).all(owner, ...trackIds) as {trackId:string;id:string;name:string}[];
+    for (const {trackId,id,name} of rows) (result[trackId] ??= []).push({id,name});
+    return result;
+  }
 }

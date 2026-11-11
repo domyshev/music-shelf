@@ -68,7 +68,7 @@ export default function App() {
       </Box>
       <Box className="loading-line">{isFetching && <LinearProgress sx={{ height: 2 }} />}</Box>
       {isError && <Alert severity="warning" sx={{ mb: 1 }} action={<Button onClick={() => void refetch()}>Retry</Button>}>{data ? 'Unable to refresh the library. Showing the last available data.' : 'Unable to load the library.'}</Alert>}
-      {isLoading || (isFetching && !data) ? <Box className="initial-loading"><CircularProgress size={24} /></Box> : <LibraryTable tracks={data?.tracks ?? []} total={data?.pagination?.total ?? 0} facets={data?.facets} />}
+      {isLoading || (isFetching && !data) ? <Box className="initial-loading"><CircularProgress size={24} /></Box> : <LibraryTable tracks={data?.tracks ?? []} total={data?.pagination?.total ?? 0} facets={data?.facets} tagsByTrack={data?.tagsByTrack} />}
     </Box>
     <DownloadSettings open={settingsOpen} onClose={()=>setSettingsOpen(false)} />
     <AiDrawer open={aiOpen} onClose={() => setAiOpen(false)} />

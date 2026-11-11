@@ -15,7 +15,7 @@ const auth = createSlice({ name: 'auth', initialState: { authenticated: false, b
   loggedOut(state) { state.authenticated = false; state.bootstrapping = false; state.checking = false; state.email = ''; state.error = ''; },
 } });
 export type ThemeChoice = 'light' | 'system' | 'dark';
-export const columnIds = ['status', 'title', 'artist', 'year', 'sampleRate', 'bitDepth', 'sizeBytes', 'attempts'];
+export const columnIds = ['status', 'title', 'artist', 'year', 'sampleRate', 'bitDepth', 'sizeBytes', 'attempts', 'tags'];
 function readPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem('music-shelf.preferences') ?? '{}');

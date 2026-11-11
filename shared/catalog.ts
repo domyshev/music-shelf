@@ -63,6 +63,7 @@ export interface LibraryEvent {
 }
 export interface CatalogResponse extends Snapshot {
   demo?: boolean;
+  tagsByTrack?: Record<string, {id:string;name:string}[]>;
   pagination?: { page: number; pageSize: number; total: number; pages: number };
   facets?: { status: string[]; artist: string[]; year: string[] };
   stats: { total: number; ready: number; pending: number; sizeBytes: number };
