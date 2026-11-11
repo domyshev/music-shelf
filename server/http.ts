@@ -159,7 +159,7 @@ export function createApp(options: AppOptions) {
         if(reply===null)throw new Error('AI settings unavailable');
         history.complete(email,requestId,reply);
       } catch(error) {
-        const reason=error instanceof Error && /^OpenRouter HTTP \d{3}$/.test(error.message)?error.message:error instanceof Error && error.message==='Tool request limit reached'?'Tool request limit reached':error instanceof Error && (error.name==='TimeoutError'||error.name==='AbortError')?'OpenRouter request timed out':'AI request failed';
+        const known=['Tool request limit reached','Too many tool calls','Invalid tool calls','OpenRouter returned no message','OpenRouter returned no text','Malformed OpenRouter JSON'];const reason=error instanceof Error && (/^OpenRouter HTTP \d{3}$/.test(error.message)||known.includes(error.message))?error.message:error instanceof Error && (error.name==='TimeoutError'||error.name==='AbortError')?'OpenRouter request timed out':error instanceof TypeError?'OpenRouter network or response error':'AI request failed';
         console.error(`Music Shelf assistant: ${reason}`);
         try {history.fail(email,requestId);} catch { /* A pending turn is marked failed after restart. */ }
       }

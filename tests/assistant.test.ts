@@ -64,3 +64,9 @@ test('enqueue requires a permitted account and IDs returned by this search',asyn
   assert.equal(bridge.claim(),null);
  }finally{bridge.close();feature.close();store.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('assistant handles thirty tool calls in one response and multipart text',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'shelf-batch-')),db=join(dir,'db.sqlite'),store=new CatalogStore(db);let round=0;
+ const transport:typeof fetch=async(_url,init)=>{const body=JSON.parse(String(init?.body));round++;if(round===1)return Response.json({choices:[{message:{role:'assistant',content:null,tool_calls:Array.from({length:30},(_,i)=>({id:`call-${i}`,type:'function',function:{name:'search_library',arguments:JSON.stringify({query:'song'})}}))}}]});assert.equal(body.messages.filter((m:{role:string})=>m.role==='tool').length,30);return Response.json({choices:[{message:{content:[{type:'text',text:'Recommendations ready'}]}}]});};
+ const feature=new Features(db,Buffer.alloc(32,3),transport);try{store.import({generatedAt:'2026-01-01T00:00:00.000Z',tracks:[{id:'song',title:'Song',artist:'Artist',album:'',year:null,status:'pending',file:null}]});feature.saveSettings('a@example.invalid','model','token');assert.equal(await feature.chat('a@example.invalid',[{role:'user',content:'Recommend songs'}],store),'Recommendations ready');assert.equal(round,2);}finally{feature.close();store.close();rmSync(dir,{recursive:true,force:true});}
+});

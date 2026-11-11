@@ -96,17 +96,20 @@ export class Features {
     const settings = this.credential(email); if (!settings) return null;
     const found = new Map();
     const conversation: object[] = [{role:'system',content:systemPrompt}, ...messages];
+    let totalCalls=0;
     for (let round=0;round<12;round++) {
       const response = await this.transport('https://openrouter.ai/api/v1/chat/completions', {
         method:'POST', signal:AbortSignal.timeout(90000), headers:{Authorization:`Bearer ${settings.token}`,'Content-Type':'application/json'},
         body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue),max_tokens:4096}),
       });
       if (!response.ok) throw new Error(`OpenRouter HTTP ${response.status}`);
-      const result=await response.json() as {choices?:{message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};
+      let result:{choices?:{message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};
+      try{result=await response.json() as typeof result;}catch{throw new Error('Malformed OpenRouter JSON');}
       const message=result.choices?.[0]?.message; if (!message) throw new Error('OpenRouter returned no message');
       const calls=message.tool_calls;
-      if (!calls?.length) {if(typeof message.content!=='string') throw new Error('OpenRouter returned no text');return message.content;}
-      if(calls.length>5 || calls.some(call=>!call.id || call.type!=='function' || !call.function)) throw new Error('Invalid tool calls');
+      if (!calls?.length) {const content=typeof message.content==='string'?message.content:Array.isArray(message.content)?message.content.filter((part):part is {type:string;text:string}=>Boolean(part&&typeof part==='object'&&part.type==='text'&&typeof part.text==='string')).map(part=>part.text).join(''):'';if(!content)throw new Error('OpenRouter returned no text');return content;}
+      if(!Array.isArray(calls)||calls.some(call=>!call||!call.id||call.type!=='function'||!call.function||typeof call.function.name!=='string'||typeof call.function.arguments!=='string'))throw new Error('Invalid tool calls');
+      totalCalls+=calls.length;if(calls.length>40||totalCalls>100)throw new Error('Too many tool calls');
       conversation.push({role:'assistant',content:typeof message.content==='string'?message.content:null,tool_calls:calls});
       for(const call of calls) {
         let output:unknown; try{output=await runTool(store,this,email,bridge,canQueue,found,call.function.name,call.function.arguments);}catch(error){output={error: error instanceof Error && error.message.startsWith('Corgi did not respond') ? error.message : 'Tool request failed or is not permitted'};}
