@@ -16,6 +16,7 @@ const auth = createSlice({ name: 'auth', initialState: { authenticated: false, b
 } });
 export type ThemeChoice = 'light' | 'system' | 'dark';
 export const columnIds = ['status', 'title', 'artist', 'year', 'sampleRate', 'bitDepth', 'sizeBytes', 'attempts', 'tags', 'queuedAt', 'completedAt'];
+export const pageSizeOptions = [25, 50, 100, 250, 500, 1000];
 function readPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem('music-shelf.preferences') ?? '{}');
@@ -34,12 +35,14 @@ function readPreferences() {
       end: isCalendarDate(raw?.end) ? raw.end : '',
     };
     if (historyFilters.start && historyFilters.end && historyFilters.start > historyFilters.end) { historyFilters.start = ''; historyFilters.end = ''; }
-    return { columnOrder, columnSizing, columnVisibility, theme, columnFilters, historyFilters };
-  } catch { return { columnOrder: columnIds, columnSizing: {} as ColumnSizingState, columnVisibility: {} as VisibilityState, theme: 'system' as ThemeChoice, columnFilters: [] as ColumnFiltersState, historyFilters: emptyHistorySelection }; }
+    const page = Number.isSafeInteger(saved.page) && saved.page >= 1 && saved.page <= 100000 ? saved.page : 1;
+    const pageSize = pageSizeOptions.includes(saved.pageSize) ? saved.pageSize as number : 25;
+    return { columnOrder, columnSizing, columnVisibility, theme, columnFilters, historyFilters, page, pageSize };
+  } catch { return { columnOrder: columnIds, columnSizing: {} as ColumnSizingState, columnVisibility: {} as VisibilityState, theme: 'system' as ThemeChoice, columnFilters: [] as ColumnFiltersState, historyFilters: emptyHistorySelection, page: 1, pageSize: 25 }; }
 }
 const preferences = readPreferences();
 const { historyFilters: savedHistoryFilters, ...uiPreferences } = preferences;
-const ui = createSlice({ name: 'ui', initialState: { page: 1, pageSize: 25, search: '', sorting: [] as SortingState, detailsId: null as string | null, ...uiPreferences }, reducers: {
+const ui = createSlice({ name: 'ui', initialState: { search: '', sorting: [] as SortingState, detailsId: null as string | null, ...uiPreferences }, reducers: {
   setPage(state, action: PayloadAction<number>) { state.page = action.payload; },
   setPageSize(state, action: PayloadAction<number>) { state.pageSize = action.payload; state.page = 1; },
   setSearch(state, action: PayloadAction<string>) { state.search = action.payload; state.page = 1; },
@@ -78,9 +81,9 @@ export const libraryApi = createApi({ reducerPath: 'libraryApi', baseQuery: guar
 export const store = configureStore({ reducer: { auth: auth.reducer, ui: ui.reducer, history: history.reducer, [libraryApi.reducerPath]: libraryApi.reducer }, middleware: getDefault => getDefault().concat(libraryApi.middleware) });
 let lastPreferences = '';
 store.subscribe(() => {
-  const { columnOrder, columnSizing, columnVisibility, columnFilters, theme } = store.getState().ui;
+  const { columnOrder, columnSizing, columnVisibility, columnFilters, theme, page, pageSize } = store.getState().ui;
   const historyFilters = store.getState().history.filters;
-  const value = JSON.stringify({ columnOrder, columnSizing, columnVisibility, columnFilters, theme, historyFilters });
+  const value = JSON.stringify({ columnOrder, columnSizing, columnVisibility, columnFilters, theme, historyFilters, page, pageSize });
   if (value !== lastPreferences) { lastPreferences = value; try { localStorage.setItem('music-shelf.preferences', value); } catch {} }
 });
 setupListeners(store.dispatch);

@@ -4,7 +4,7 @@ import FilterAltOutlined from '@mui/icons-material/FilterAltOutlined';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Track } from '../../shared/catalog';
-import { uiActions, useAppDispatch, useAppSelector } from '../store';
+import { pageSizeOptions, uiActions, useAppDispatch, useAppSelector } from '../store';
 import { formatDate, formatRate, formatSize } from '../format';
 import { Status } from './Status';
 import { OverflowTooltip } from './OverflowTooltip';
@@ -98,7 +98,7 @@ export function LibraryTable({ tracks, total, facets, tagsByTrack }: { tracks: T
       </Table>
       {rows.length === 0 && <Box className="empty-state"><Typography sx={{ fontWeight: 600 }}>No songs found</Typography><Typography variant="body2" color="text.secondary">Try a different search or clear the filters.</Typography></Box>}
     </Box>
-    <TablePagination component="div" count={total} page={Math.min(page - 1, Math.max(0, Math.ceil(total / pageSize) - 1))} rowsPerPage={pageSize} rowsPerPageOptions={[25, 50, 100, 250]} onPageChange={(_event, next) => dispatch(uiActions.setPage(next + 1))} onRowsPerPageChange={event => dispatch(uiActions.setPageSize(Number(event.target.value)))} sx={{ flexShrink: 0, borderTop: 1, borderColor: 'divider', '& .MuiToolbar-root': { minHeight: 38 }, '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': { fontSize: 11 }, '& .MuiTablePagination-actions': { ml: 1 } }} />
+    <TablePagination component="div" count={total} page={Math.min(page - 1, Math.max(0, Math.ceil(total / pageSize) - 1))} rowsPerPage={pageSize} rowsPerPageOptions={pageSizeOptions} onPageChange={(_event, next) => dispatch(uiActions.setPage(next + 1))} onRowsPerPageChange={event => dispatch(uiActions.setPageSize(Number(event.target.value)))} sx={{ flexShrink: 0, borderTop: 1, borderColor: 'divider', '& .MuiToolbar-root': { minHeight: 38 }, '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': { fontSize: 11 }, '& .MuiTablePagination-actions': { ml: 1 } }} />
     <Popover open={Boolean(filterAnchor)} anchorEl={filterAnchor?.element} onClose={() => setFilterAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
       <Box sx={{ width: 280, maxWidth: '90vw' }}><Box sx={{ px: 1.5, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: 1, borderColor: 'divider' }}><Typography sx={{ fontSize: 12, fontWeight: 600 }}>{String(activeColumn?.columnDef.header ?? '')}</Typography><Button onClick={() => activeColumn?.setFilterValue(undefined)} disabled={!selected.length}>Clear</Button></Box>
         <List dense sx={{ maxHeight: 320, overflow: 'auto', py: 0.5 }} aria-label="Filter values">{available.map(value => <ListItemButton key={value} selected={selected.includes(value)} onClick={() => { const next = selected.includes(value) ? selected.filter(item => item !== value) : [...selected, value]; activeColumn?.setFilterValue(next.length ? next : undefined); }}><Checkbox size="small" checked={selected.includes(value)} tabIndex={-1} disableRipple sx={{ p: 0.5, mr: 1 }} /><ListItemText primary={value || 'Unknown'} slotProps={{ primary: { sx: { fontSize: 12 } } }} /></ListItemButton>)}</List>

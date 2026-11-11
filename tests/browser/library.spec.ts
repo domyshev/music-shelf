@@ -42,6 +42,19 @@ test('virtualizes a large library, scrolls the table only, searches, sorts and r
   await expect(page.getByRole('table', { name: 'Songs', exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Email', exact: true })).toHaveCount(0);
 });
+test('persists page size and current page, and clamps stale pages', async ({page}) => {
+  await page.getByRole('combobox').click();await page.getByRole('option',{name:'500',exact:true}).click();
+  await expect(page.getByText('1–500 of 5,000')).toBeVisible();
+  await page.getByRole('button',{name:'Go to next page'}).click();
+  await expect(page.getByText('501–1,000 of 5,000')).toBeVisible();
+  await page.reload();await expect(page.getByText('501–1,000 of 5,000')).toBeVisible();
+  await expect(page.getByRole('combobox')).toHaveText('500');
+  await page.getByRole('combobox').click();await page.getByRole('option',{name:'1000',exact:true}).click();
+  await expect(page.getByText('1–1,000 of 5,000')).toBeVisible();
+  await page.reload();await expect(page.getByRole('combobox')).toHaveText('1000');
+  await page.evaluate(()=>{const key='music-shelf.preferences';const value=JSON.parse(localStorage.getItem(key)!);value.page=99;localStorage.setItem(key,JSON.stringify(value));});
+  await page.reload();await expect(page.getByText('4,001–5,000 of 5,000')).toBeVisible();
+});
 test('opens newest-first history and keeps logout inside the menu', async ({ page }) => {
   await expect(page.getByRole('menuitem', { name: 'Sign out' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Download history' }).click();

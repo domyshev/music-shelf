@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CatalogStore, SnapshotConflict } from '../server/store.js';
-import { snapshotSchema, type AudioFile, type Track } from '../shared/catalog.js';
+import { catalogQuerySchema, snapshotSchema, type AudioFile, type Track } from '../shared/catalog.js';
 
 export const exampleFile: AudioFile = { name: 'example.flac', sizeBytes: 12345678, sha256: 'a'.repeat(64), format: 'flac', codec: 'flac', sampleRate: 44100, bitDepth: 16, channels: 2, durationSeconds: 180, bitrateBps: 800000 };
 export const pending: Track = { id: 'example', title: 'A fictional track', artist: 'An imaginary artist', album: 'Demo album', year: 1968, status: 'pending', file: null };
@@ -127,6 +127,12 @@ test('catalog pages search, filter and sort the full library before limiting row
     const noMatch = store.catalogPage({ ...query, page: 1, filters: { artist: ['First band'], year: ['1960'] } });
     assert.equal(noMatch.pagination?.total, 0);
   } finally { store.close(); }
+});
+
+test('catalog accepts pages of 500 and 1000 but rejects larger pages',()=>{
+ assert.equal(catalogQuerySchema.parse({pageSize:500}).pageSize,500);
+ assert.equal(catalogQuerySchema.parse({pageSize:1000}).pageSize,1000);
+ assert.equal(catalogQuerySchema.safeParse({pageSize:1001}).success,false);
 });
 
 test('attempt counts survive catalog snapshots for ready and pending tracks and sort numerically',()=>{

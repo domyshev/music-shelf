@@ -14,6 +14,8 @@ test('selections retain pending tracks and context, isolate users and reject dup
     assert.equal(tag.name, 'agent-moon.dust-2');
     assert.deepEqual(tag.trackIds, ['pending', 'ready']);
     assert.deepEqual(tag.basis, {library: ['existing']});
+    const pageIds = Array.from({length: 1000}, (_, index) => index === 999 ? 'pending' : `track-${index}`);
+    assert.deepEqual(tags.forTracks('one@example.test', pageIds).pending, [{id:tag.id,name:tag.name}]);
     assert.equal(tags.get('other@example.test', tag.id), null);
     assert.deepEqual(tags.list('other@example.test'), []);
     assert.throws(() => tags.create('one@example.test', 'moon.dust', 'Duplicate', {}, ['pending']));
