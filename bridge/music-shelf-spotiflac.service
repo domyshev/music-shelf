@@ -13,6 +13,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
+ReadWritePaths=%h/Music/SpotiFLAC-API/MusicShelfPlaylists
 
 [Install]
 WantedBy=default.target
