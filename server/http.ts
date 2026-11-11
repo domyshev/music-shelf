@@ -135,6 +135,11 @@ export function createApp(options: AppOptions) {
     if(!options.chatHistory){response.status(503).json({error:'Chat history unavailable'});return;}
     response.json(options.chatHistory.page(response.locals.email,before));
   });
+  app.get('/api/ai/chat/turn/:requestId', authorize, (request,response) => {
+    const requestId=String(request.params.requestId);if(!z.uuid().safeParse(requestId).success){response.status(400).json({error:'Invalid request ID'});return;}
+    if(!options.chatHistory){response.status(503).json({error:'Chat history unavailable'});return;}
+    const turn=options.chatHistory.turn(response.locals.email,requestId);if(!turn){response.status(404).json({error:'Chat turn not found'});return;}response.json(turn);
+  });
   app.post('/api/ai/chat', authorize, sameOrigin, express.json({limit:'32kb'}), async (request,response) => {
     const parsed=z.object({requestId:z.uuid(),message:z.string().trim().min(1).max(12000)}).strict().safeParse(request.body);
     if(!parsed.success){response.status(400).json({error:'Invalid chat message'});return;}
@@ -147,14 +152,19 @@ export function createApp(options: AppOptions) {
       if(error instanceof ChatDuplicate){response.status(409).json({error:'This message was already submitted. Reload the chat to see its status.'});return;}
       response.status(500).json({error:'Unable to save message'});return;
     }
-    try {
-      const reply=await options.features.chat(email,options.chatHistory.context(email,requestId),options.store,options.bridge,options.queueUsers?.includes(email) ?? false);
-      if(reply===null) throw new Error('AI settings unavailable');
-      options.chatHistory.complete(email,requestId,reply);response.json({reply});
-    } catch {
-      try {options.chatHistory.fail(email,requestId);} catch { /* A pending turn is marked failed after restart. */ }
-      response.status(502).json({error:'The response could not be completed. Check the chat history and queue before trying again.'});
-    }
+    const features=options.features,history=options.chatHistory;
+    void (async()=>{
+      try {
+        const reply=await features.chat(email,history.context(email,requestId),options.store,options.bridge,options.queueUsers?.includes(email) ?? false);
+        if(reply===null)throw new Error('AI settings unavailable');
+        history.complete(email,requestId,reply);
+      } catch(error) {
+        const reason=error instanceof Error && /^OpenRouter HTTP \d{3}$/.test(error.message)?error.message:error instanceof Error && error.message==='Tool request limit reached'?'Tool request limit reached':error instanceof Error && (error.name==='TimeoutError'||error.name==='AbortError')?'OpenRouter request timed out':'AI request failed';
+        console.error(`Music Shelf assistant: ${reason}`);
+        try {history.fail(email,requestId);} catch { /* A pending turn is marked failed after restart. */ }
+      }
+    })();
+    response.status(202).json({requestId,state:'pending'});
   });
   app.get('/api/catalog', authorize, (request, response) => {
     try {

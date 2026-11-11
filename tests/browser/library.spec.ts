@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 const tracks = Array.from({ length: 5000 }, (_, index) => ({ id: `fixture-${index}`, title: `Fictional song ${String(index).padStart(4, '0')}`, artist: `Demo Artist ${index % 7}`, album: 'Synthetic album', year: 1960 + index % 10, status: 'pending', file: null }));
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/ai/chat/turn/*', route=>route.fulfill({json:{state:'complete',reply:'Done'}}));
   await page.route('**/api/catalog?*', route => {
     const params = new URL(route.request().url()).searchParams;
     const query = (params.get('q') ?? '').toLowerCase();
@@ -300,4 +301,9 @@ test('edits persistent owner download settings',async({page})=>{
  let setting={enabled:true,maxAttempts:100,canEdit:true};
  await page.route('**/api/download/settings',route=>{if(route.request().method()==='PUT')setting={...setting,...route.request().postDataJSON()};return route.fulfill({json:setting});});
  await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('menuitem',{name:'Settings'}).click();const dialog=page.getByRole('dialog',{name:'Settings'});const toggle=dialog.getByRole('switch',{name:'Automatically stop retrying'}),limit=dialog.getByLabel('Attempt limit');await expect(toggle).toBeChecked();await expect(limit).toHaveValue('100');await toggle.uncheck();await expect(limit).toBeDisabled();await dialog.getByRole('button',{name:'Save',exact:true}).click();await expect(dialog.getByText('Saved')).toBeVisible();await dialog.getByRole('button',{name:'Close'}).click();await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('menuitem',{name:'Settings'}).click();await expect(toggle).not.toBeChecked();await expect(limit).toBeDisabled();await toggle.check();await limit.fill('125');await dialog.getByRole('button',{name:'Save',exact:true}).click();await expect(dialog.getByText('Saved')).toBeVisible();expect(setting).toMatchObject({enabled:true,maxAttempts:125});
+});
+
+test('reports an HTML proxy error without exposing JSON parsing errors or replaying the request',async({page})=>{
+ let sent=0;await page.route('**/api/ai/settings',route=>route.fulfill({json:{model:'demo/model',hasToken:true}}));await page.route('**/api/ai/chat/history*',route=>route.fulfill({json:{turns:[],nextBefore:null}}));await page.route('**/api/ai/chat',route=>{sent++;return route.fulfill({status:504,contentType:'text/html',body:'<!DOCTYPE html><html><body>Gateway timeout</body></html>'});});
+ await page.getByRole('button',{name:'AI assistant',exact:true}).click();await page.getByLabel('Message AI').fill('Find songs');await page.getByRole('button',{name:'Send',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Unexpected server response (HTTP 504)');await expect(page.getByRole('alert')).not.toContainText('Unexpected token');expect(sent).toBe(1);await expect(page.getByLabel('Message AI')).toHaveValue('');
 });

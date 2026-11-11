@@ -96,12 +96,12 @@ export class Features {
     const settings = this.credential(email); if (!settings) return null;
     const found = new Map();
     const conversation: object[] = [{role:'system',content:systemPrompt}, ...messages];
-    for (let round=0;round<6;round++) {
+    for (let round=0;round<12;round++) {
       const response = await this.transport('https://openrouter.ai/api/v1/chat/completions', {
         method:'POST', signal:AbortSignal.timeout(90000), headers:{Authorization:`Bearer ${settings.token}`,'Content-Type':'application/json'},
-        body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue),max_tokens:2000}),
+        body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue),max_tokens:4096}),
       });
-      if (!response.ok) throw new Error('OpenRouter request failed');
+      if (!response.ok) throw new Error(`OpenRouter HTTP ${response.status}`);
       const result=await response.json() as {choices?:{message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};
       const message=result.choices?.[0]?.message; if (!message) throw new Error('OpenRouter returned no message');
       const calls=message.tool_calls;

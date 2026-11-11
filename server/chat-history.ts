@@ -27,6 +27,9 @@ export class ChatHistory {
     const turns=rows.slice(0,limit).reverse();
     return {turns, nextBefore:hasMore ? turns[0].id : null};
   }
+  turn(email:string,requestId:string) {
+    return this.db.prepare('SELECT id,request_id AS requestId,message,reply,state,created_at AS createdAt FROM ai_chat_turns WHERE email=? AND request_id=?').get(email,requestId) as ChatTurn|undefined;
+  }
   begin(email:string,requestId:string,message:string) {
     if(this.active.has(email)) throw new ChatBusy();
     try {

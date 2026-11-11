@@ -8,6 +8,7 @@ import VisibilityOutlined from '@mui/icons-material/VisibilityOutlined';
 import DeleteOutline from '@mui/icons-material/DeleteOutlineRounded';
 import CheckBoxRounded from '@mui/icons-material/CheckBoxRounded';
 import CheckBoxOutlineBlankRounded from '@mui/icons-material/CheckBoxOutlineBlankRounded';
+import { readApiResponse, waitForChatTurn } from '../chatRequest';
 import { LyricsMarkdown } from './LyricsMarkdown';
 import { Status } from './Status';
 import type { Track } from '../../shared/catalog';
@@ -48,8 +49,8 @@ export function TrackDetails({ track, onClose }: { track?: Track; onClose: () =>
     try {
       if(useAi){
         const message=`Translate the following exact selected text for this song and save it with the save_word_translations tool. Read the song lyrics for context. Track ID: ${JSON.stringify(track.id)}; source language: ${tip.language}; target language: ${targetLanguage}; exact selected text (JSON string): ${JSON.stringify(tip.word)}. Save the complete selected text as one entry; do not substitute individual words.`;
-        const response=await fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requestId:crypto.randomUUID(),message})});
-        if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||'AI translation failed');}
+        const requestId=crypto.randomUUID();const response=await fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requestId,message})});
+        await readApiResponse(response);await waitForChatTurn(requestId);
       }else{
         const isEdit=typeof translationForm==='number';const response=await fetch(`/api/tracks/${encodeURIComponent(track.id)}/words${isEdit?`/${translationForm}`:''}`,{method:isEdit?'PATCH':'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(isEdit?{translation:translationDraft}:{word:tip.word,sourceLanguage:tip.language,targetLanguage,translation:translationDraft})});if(!response.ok)throw new Error('Unable to save translation');
       }

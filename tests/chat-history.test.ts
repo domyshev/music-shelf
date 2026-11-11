@@ -30,14 +30,23 @@ test('chat API stores turns server-side, isolates accounts and uses persisted co
  function cookie(email:string){const c=auth.issue(email,email);auth.delivered(c.challengeId);return 'music-shelf-session='+auth.verify(c.challengeId,c.code).token;}
  const one=cookie('one@example.invalid'),two=cookie('two@example.invalid');features.saveSettings('one@example.invalid','model','token');
  const server=createApp({store,auth,features,chatHistory:history,mailer:{async send(){}},origin:'http://test.invalid'}).listen(0,'127.0.0.1');await once(server,'listening');const base=`http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+ const wait=async(id:string)=>{for(let i=0;i<100;i++){const result=await (await fetch(base+'/api/ai/chat/turn/'+id,{headers:{Cookie:one}})).json() as {state:string};if(result.state!=='pending')return result;await new Promise(resolve=>setTimeout(resolve,10));}throw new Error('Timed out');};
  const send=(id:string,message:string,origin='http://test.invalid')=>fetch(base+'/api/ai/chat',{method:'POST',headers:{Cookie:one,Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({requestId:id,message})});
  try {
   assert.equal((await fetch(base+'/api/ai/chat/history')).status,401);assert.equal((await send(randomUUID(),'forbidden','http://evil.invalid')).status,403);
-  const id=randomUUID();assert.equal((await send(id,'first question')).status,200);assert.equal((await send(id,'first question')).status,409);assert.equal(calls,1);
-  assert.equal((await send(randomUUID(),'second question')).status,200);
+  const id=randomUUID();assert.equal((await send(id,'first question')).status,202);assert.equal((await wait(id)).state,'complete');assert.equal((await send(id,'first question')).status,409);assert.equal(calls,1);assert.equal((await fetch(base+'/api/ai/chat/turn/'+id,{headers:{Cookie:two}})).status,404);
+  const secondId=randomUUID();assert.equal((await send(secondId,'second question')).status,202);assert.equal((await wait(secondId)).state,'complete');
   const own=await (await fetch(base+'/api/ai/chat/history',{headers:{Cookie:one}})).json() as {turns:{message:string;reply:string}[]};assert.deepEqual(own.turns.map(t=>[t.message,t.reply]),[['first question','first answer'],['second question','second answer']]);
-  const failedId=randomUUID();assert.equal((await send(failedId,'cause failure')).status,502);assert.equal((await send(failedId,'cause failure')).status,409);
+  const failedId=randomUUID();assert.equal((await send(failedId,'cause failure')).status,202);assert.equal((await wait(failedId)).state,'failed');assert.equal((await send(failedId,'cause failure')).status,409);
   const failed=await (await fetch(base+'/api/ai/chat/history',{headers:{Cookie:one}})).json() as {turns:{state:string;message:string}[]};assert.equal(failed.turns.at(-1)?.state,'failed');assert.equal(failed.turns.at(-1)?.message,'cause failure');
   const other=await (await fetch(base+'/api/ai/chat/history',{headers:{Cookie:two}})).json() as {turns:unknown[]};assert.deepEqual(other.turns,[]);
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));features.close();history.close();auth.close();store.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('long chat is accepted immediately, survives client response, and cannot be replayed',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'music-chat-background-')),path=join(dir,'db.sqlite'),secret=Buffer.alloc(32,6);const store=new CatalogStore(path),auth=new EmailAuth(path,secret),history=new ChatHistory(path);let release!:(value:Response)=>void;const pending=new Promise<Response>(resolve=>{release=resolve;});let calls=0;
+ const features=new Features(path,secret,async()=>{calls++;return pending;});const challenge=auth.issue('a@example.invalid','a');auth.delivered(challenge.challengeId);const cookie='music-shelf-session='+auth.verify(challenge.challengeId,challenge.code).token;features.saveSettings('a@example.invalid','model','token');
+ const server=createApp({store,auth,features,chatHistory:history,mailer:{async send(){}},origin:'http://test.invalid'}).listen(0,'127.0.0.1');await once(server,'listening');const base=`http://127.0.0.1:${(server.address() as AddressInfo).port}`,id=randomUUID();const send=()=>fetch(base+'/api/ai/chat',{method:'POST',headers:{Cookie:cookie,Origin:'http://test.invalid','Content-Type':'application/json'},body:JSON.stringify({requestId:id,message:'Find music'})});
+ try {const first=await send();assert.equal(first.status,202);assert.equal((await (await fetch(base+'/api/ai/chat/turn/'+id,{headers:{Cookie:cookie}})).json()).state,'pending');assert.equal((await send()).status,409);assert.equal(calls,1);release(Response.json({choices:[{message:{content:'Finished'}}]}));let state='pending';for(let i=0;i<100&&state==='pending';i++){await new Promise(resolve=>setTimeout(resolve,10));state=(await (await fetch(base+'/api/ai/chat/turn/'+id,{headers:{Cookie:cookie}})).json()).state;}assert.equal(state,'complete');assert.equal(calls,1);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));features.close();history.close();auth.close();store.close();rmSync(dir,{recursive:true,force:true});}
 });
