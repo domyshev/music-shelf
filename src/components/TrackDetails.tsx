@@ -17,7 +17,7 @@ import { WindowFrame } from './WindowFrame';
 
 const languageNames = new Intl.DisplayNames(['en'], {type:'language'});
 const preferredLanguages = ['ru','es','en'];
-const lyricsBlockColors = ['#b78035','#56815a','#a96b50','#85905b','#9a7550','#7c896c','#b48a63','#86734f','#72835a','#b27865','#8c8265','#a18b71'];
+const lyricsBlockColors = ['#555555','#999999','#707070','#aaaaaa','#606060','#8b8b8b','#777777','#b5b5b5','#686868','#a1a1a1','#808080','#929292'];
 const languageLabel = (code:string) => { const name=languageNames.of(code) ?? code; return name.charAt(0).toUpperCase()+name.slice(1); };
 const readMetadataHeight = () => { try { const value=Number(localStorage.getItem('music-shelf-song-metadata-height')); return Number.isFinite(value)&&value>=80&&value<=2000?value:undefined; } catch { return undefined; } };
 const languageCodes = Array.from({length:26*26},(_,i)=>String.fromCharCode(97+Math.floor(i/26),97+i%26)).filter(code=>languageNames.of(code)!==code);

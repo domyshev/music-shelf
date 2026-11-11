@@ -140,15 +140,15 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
   await page.reload();await page.getByRole('button',{name:'AI assistant',exact:true}).click();await expect(page.getByText('Hello',{exact:true})).toBeVisible();await expect(page.getByText('A demo reply')).toBeVisible();
 });
 
-test('uses the turntable mark and blue-red themes', async ({ page }) => {
+test('uses the turntable mark and monochrome themes', async ({ page }) => {
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href','/music-shelf.svg');
   const icon=page.locator('.app-header .wordmark-icon');await expect(icon).toBeVisible();
   expect(await icon.evaluate((image: HTMLImageElement)=>image.naturalWidth)).toBeGreaterThan(0);
   await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('button',{name:'Light theme'}).click();await page.keyboard.press('Escape');
-  await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(243, 246, 252)');
+  await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(243, 243, 243)');
   await page.screenshot({path:'/tmp/music-shelf-light-024.png'});
   await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('button',{name:'Dark theme'}).click();await page.keyboard.press('Escape');
-  await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(16, 23, 38)');
+  await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(20, 20, 20)');
   await page.screenshot({path:'/tmp/music-shelf-dark-024.png'});
 });
 
@@ -276,7 +276,7 @@ test('truncates long lyrics lines inside blocks without changing their height',a
 });
 
 
-test('uses distinct natural colors per language and alternates block intensity',async({page})=>{
+test('uses distinct monochrome shades per language and alternates block intensity',async({page})=>{
  const text='> First line\n> Second line\n\n> Third line\n> Fourth line';
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'en',texts:{ru:text,es:text,en:text}}}));
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();
