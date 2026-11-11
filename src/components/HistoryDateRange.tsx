@@ -4,7 +4,7 @@ import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import { isCalendarDate, localDate } from '../historyFilters';
 
-export function HistoryDateRange({ anchor, start, end, onClose, onApply }: { anchor: HTMLElement; start: string; end: string; onClose: () => void; onApply: (start: string, end: string) => void }) {
+export function HistoryDateRange({ anchor, start, end, onClose, onApply, title='Event date range' }: { anchor: HTMLElement; start: string; end: string; onClose: () => void; onApply: (start: string, end: string) => void; title?:string }) {
   const [draftStart, setStart] = useState(start);
   const [draftEnd, setEnd] = useState(end);
   const [month, setMonth] = useState(() => { const date = start ? new Date(`${start}T12:00:00`) : new Date(); return new Date(date.getFullYear(), date.getMonth(), 1); });
@@ -18,7 +18,7 @@ export function HistoryDateRange({ anchor, start, end, onClose, onApply }: { anc
   }
   return <Popover open anchorEl={anchor} onClose={onClose} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
     <Box sx={{ width: 310, maxWidth: 'calc(100vw - 24px)', p: 1.5 }}>
-      <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 1 }}>Event date range</Typography>
+      <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 1 }}>{title}</Typography>
       <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
         <TextField label="From" type="date" value={draftStart} onChange={event => setStart(event.target.value)} slotProps={{ inputLabel: { shrink: true }, htmlInput: { 'aria-label': 'From' } }} sx={{ flex: 1, '& input': { fontSize: 11, px: 1 } }} />
         <TextField label="To" type="date" value={draftEnd} onChange={event => setEnd(event.target.value)} slotProps={{ inputLabel: { shrink: true }, htmlInput: { 'aria-label': 'To' } }} sx={{ flex: 1, '& input': { fontSize: 11, px: 1 } }} />

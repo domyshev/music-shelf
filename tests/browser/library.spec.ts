@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
     const matching = tracks.filter(track => `${track.title} ${track.artist}`.toLowerCase().includes(query));
     if (params.get('sort') === 'title') matching.sort((a, b) => a.title.localeCompare(b.title) * (params.get('direction') === 'desc' ? -1 : 1));
     const page = Number(params.get('page') ?? 1); const pageSize = Number(params.get('pageSize') ?? 100);
-    return route.fulfill({ json: { generatedAt: '2026-01-01T12:00:00.000Z', tracks: matching.slice((page - 1) * pageSize, page * pageSize), stats: { total: 5000, ready: 0, pending: 5000, sizeBytes: 0 }, pagination: { page, pageSize, total: matching.length, pages: Math.ceil(matching.length / pageSize) }, facets: { status: ['pending'], artist: [...new Set(tracks.map(track => track.artist))], year: ['1960'] } } });
+    return route.fulfill({ json: { generatedAt: '2026-01-01T12:00:00.000Z', tracks: matching.slice((page - 1) * pageSize, page * pageSize), tagOptions:[{id:'12345678-1234-4234-8234-123456789abc',name:'agent-moon.dust-2'}], stats: { total: 5000, ready: 0, pending: 5000, sizeBytes: 0 }, pagination: { page, pageSize, total: matching.length, pages: Math.ceil(matching.length / pageSize) }, facets: { status: ['pending'], artist: [...new Set(tracks.map(track => track.artist))], year: ['1960'] } } });
   });
   await page.route('**/api/history?*', route => route.fulfill({ json: { total: 2, events: [{ id: 2, trackId: 'fixture-2', title: 'Newer fictional song', artist: 'Demo Artist', kind: 'downloaded', occurredAt: '2026-01-02T12:00:00.000Z', timeBasis: 'source' }, { id: 1, trackId: 'fixture-1', title: 'Older fictional song', artist: 'Demo Artist', kind: 'imported', occurredAt: '2026-01-01T12:00:00.000Z', timeBasis: 'import' }], nextCursor: null } }));
   let authenticated = false;
@@ -57,7 +57,6 @@ test('persists page size and current page, and clamps stale pages', async ({page
 });
 test('configures all column filters from the search toolbar and resets them',async({page})=>{
   await page.getByRole('button',{name:'Filters',exact:true}).click();
-  await page.getByRole('menuitem',{name:'Configure filters'}).click();
   const dialog=page.getByRole('dialog',{name:'Configure filters'});
   await expect(dialog.getByLabel('Status')).toBeVisible();await expect(dialog.getByLabel('Artist / band')).toBeVisible();await expect(dialog.getByLabel('Year')).toBeVisible();
   await dialog.getByLabel('Status').click();await page.getByRole('option',{name:'pending'}).click();await page.keyboard.press('Escape');
@@ -67,9 +66,21 @@ test('configures all column filters from the search toolbar and resets them',asy
   await expect(page.getByRole('button',{name:'Filters',exact:true})).toHaveAttribute('aria-pressed','true');
   await expect.poll(async()=>page.evaluate(()=>JSON.parse(localStorage.getItem('music-shelf.preferences')!).columnFilters.length)).toBe(3);
   await page.reload();await expect(page.getByRole('button',{name:'Filters',exact:true})).toHaveAttribute('aria-pressed','true');
-  await page.getByRole('button',{name:'Filters',exact:true}).click();await page.getByRole('menuitem',{name:'Reset all filters'}).click();
+  await page.getByRole('button',{name:'Filter actions'}).click();await page.getByRole('menuitem',{name:'Reset all filters'}).click();
   await expect(page.getByRole('button',{name:'Filters',exact:true})).toHaveAttribute('aria-pressed','false');
   await expect.poll(async()=>page.evaluate(()=>JSON.parse(localStorage.getItem('music-shelf.preferences')!).columnFilters.length)).toBe(0);
+});
+test('filters every catalog column including tag and calendar dates',async({page})=>{
+  await page.getByRole('button',{name:'Filters',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Configure filters'});
+  await dialog.getByLabel('Song',{exact:true}).fill('Song 0001');
+  await dialog.getByLabel('Tags').click();await page.getByRole('option',{name:'agent-moon.dust-2'}).click();await page.keyboard.press('Escape');
+  for(const label of ['Sample rate (Hz)','Bit depth','Size (bytes)','Attempts'])await dialog.getByLabel(`${label} min`).fill('1');
+  await dialog.getByRole('button',{name:'Queued at date range'}).click();
+  await page.getByLabel('From',{exact:true}).fill('2026-01-01');await page.getByLabel('To',{exact:true}).fill('2026-01-03');await page.getByRole('button',{name:'Apply',exact:true}).click();
+  await dialog.getByRole('button',{name:'Downloaded at date range'}).click();
+  await page.getByLabel('From',{exact:true}).fill('2026-02-01');await page.getByLabel('To',{exact:true}).fill('2026-02-02');await page.getByRole('button',{name:'Apply',exact:true}).click();
+  await expect.poll(async()=>page.evaluate(()=>JSON.parse(localStorage.getItem('music-shelf.preferences')!).columnFilters.length)).toBe(8);
+  await page.keyboard.press('Escape');await page.reload();await page.getByRole('button',{name:'Filters',exact:true}).click();await expect(page.getByRole('dialog',{name:'Configure filters'}).getByLabel('Song',{exact:true})).toHaveValue('Song 0001');
 });
 test('opens newest-first history and keeps logout inside the menu', async ({ page }) => {
   await expect(page.getByRole('menuitem', { name: 'Sign out' })).toHaveCount(0);

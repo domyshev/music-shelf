@@ -153,3 +153,12 @@ test('queue and completion dates sort across the catalog with unknown dates last
   }
  }finally{store.close();}
 });
+
+test('catalog filters fields and inclusive-start exclusive-end timestamps before pagination',()=>{
+ const store=new CatalogStore(':memory:');try{
+  store.import({generatedAt:at(4),tracks:[{...pending,id:'one',title:'Café Song',queuedAt:at(1),status:'ready',file:exampleFile,completedAt:at(2),attempts:4},{...pending,id:'two',title:'Other',queuedAt:at(2),status:'ready',file:{...exampleFile,sampleRate:96000},completedAt:at(3),attempts:8},{...pending,id:'unknown'}]});
+  const base={page:1,pageSize:25,q:'',sort:'position' as const,direction:'asc' as const};
+  assert.deepEqual(store.catalogPage({...base,filters:{title:'CAFE',sampleRate:{min:44000,max:45000},bitDepth:{min:16},sizeBytes:{max:12345678},attempts:{min:4,max:4},queuedAt:{from:at(1),to:at(2)},completedAt:{from:at(2),to:at(3)}}}).tracks.map(t=>t.id),['one']);
+  assert.deepEqual(store.catalogPage({...base,filters:{queuedAt:{from:at(2)}}}).tracks.map(t=>t.id),['two']);
+ }finally{store.close();}
+});

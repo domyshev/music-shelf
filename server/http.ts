@@ -171,9 +171,10 @@ export function createApp(options: AppOptions) {
       const raw = { ...request.query, ...(typeof request.query.filters === 'string' ? { filters: JSON.parse(request.query.filters) } : {}) };
       const parsed = catalogQuerySchema.safeParse(raw);
       if (!parsed.success) { response.status(400).json({ error: 'Invalid catalog query' }); return; }
-      const catalog=options.store.catalogPage(parsed.data);
+      const catalog=options.store.catalogPage(parsed.data,response.locals.email);
       const tagsByTrack=options.features?.tags.forTracks(response.locals.email,catalog.tracks.map(track=>track.id)) ?? {};
-      response.json({ ...catalog, tagsByTrack, demo: Boolean(options.demo) });
+      const tagOptions=options.features?.tags.options(response.locals.email) ?? [];
+      response.json({ ...catalog, tagsByTrack, tagOptions, demo: Boolean(options.demo) });
     } catch { response.status(400).json({ error: 'Invalid catalog query' }); }
   });
   app.get('/api/history', authorize, (request, response) => {

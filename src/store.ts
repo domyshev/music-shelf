@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import type { SortingState, ColumnSizingState, ColumnFiltersState, VisibilityState } from '@tanstack/react-table';
 import { eventKinds, type CatalogResponse, type CatalogQuery, type HistoryResponse, type HistoryFilters, type LibraryEvent } from '../shared/catalog';
 import { emptyHistorySelection, isCalendarDate, type HistorySelection } from './historyFilters';
+import { validCatalogFilters } from './catalogFilters';
 
 // Retire the previous shared-code credential; preferences remain untouched.
 try { localStorage.removeItem('music-shelf.access-code'); } catch {}
@@ -27,7 +28,7 @@ function readPreferences() {
     const columnSizing: ColumnSizingState = {};
     for (const id of columnIds) if (Number.isFinite(saved.columnSizing?.[id])) columnSizing[id] = Math.max(64, Math.min(1200, saved.columnSizing[id]));
     const theme: ThemeChoice = ['light', 'system', 'dark'].includes(saved.theme) ? saved.theme : 'system';
-    const columnFilters: ColumnFiltersState = Array.isArray(saved.columnFilters) ? saved.columnFilters.filter((filter: { id?: unknown; value?: unknown }) => filter && ['status', 'artist', 'year'].includes(String(filter.id)) && Array.isArray(filter.value) && filter.value.length <= 10000 && filter.value.every((value: unknown) => typeof value === 'string' && value.length <= 1000)) : [];
+    const columnFilters: ColumnFiltersState = validCatalogFilters(saved.columnFilters);
     const raw = saved.historyFilters;
     const historyFilters: HistorySelection = {
       kinds: Array.isArray(raw?.kinds) ? [...new Set(raw.kinds.filter((kind: unknown) => eventKinds.includes(kind as typeof eventKinds[number])))] as HistorySelection['kinds'] : [],

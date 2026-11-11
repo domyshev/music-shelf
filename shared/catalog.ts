@@ -64,6 +64,7 @@ export interface LibraryEvent {
 export interface CatalogResponse extends Snapshot {
   demo?: boolean;
   tagsByTrack?: Record<string, {id:string;name:string}[]>;
+  tagOptions?: {id:string;name:string}[];
   pagination?: { page: number; pageSize: number; total: number; pages: number };
   facets?: { status: string[]; artist: string[]; year: string[] };
   stats: { total: number; ready: number; pending: number; sizeBytes: number };
@@ -80,6 +81,14 @@ export const catalogQuerySchema = z.object({
     status: z.array(z.enum(['ready', 'pending'])).max(2).optional(),
     artist: z.array(z.string().max(1000)).max(10000).optional(),
     year: z.array(z.string().regex(/^(?:|(?:18|19|20|21)\d{2}|2200)$/)).max(500).optional(),
+    title: z.string().trim().min(1).max(1000).optional(),
+    tags: z.array(z.uuid()).max(1000).optional(),
+    sampleRate: z.object({min:z.number().nonnegative().optional(),max:z.number().nonnegative().optional()}).strict().optional(),
+    bitDepth: z.object({min:z.number().nonnegative().optional(),max:z.number().nonnegative().optional()}).strict().optional(),
+    sizeBytes: z.object({min:z.number().nonnegative().optional(),max:z.number().nonnegative().optional()}).strict().optional(),
+    attempts: z.object({min:z.number().nonnegative().optional(),max:z.number().nonnegative().optional()}).strict().optional(),
+    queuedAt: z.object({from:timestamp.optional(),to:timestamp.optional()}).strict().optional(),
+    completedAt: z.object({from:timestamp.optional(),to:timestamp.optional()}).strict().optional(),
   }).strict().default({}),
 }).strict();
 export type CatalogQuery = z.infer<typeof catalogQuerySchema>;

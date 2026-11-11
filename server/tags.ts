@@ -55,6 +55,10 @@ export class Tags {
     return rows.map(row => this.get(owner, row.id)!);
   }
 
+  options(owner: string) {
+    return this.db.prepare('SELECT id,name FROM selection_tags WHERE owner=? ORDER BY name COLLATE NOCASE,id').all(owner) as {id:string;name:string}[];
+  }
+
   forTracks(owner: string, trackIds: string[]) {
     const result: Record<string, {id:string;name:string}[]> = Object.create(null);
     if (!trackIds.length) return result;

@@ -8,6 +8,7 @@ export class CatalogStore {
   private db: DatabaseSync;
   constructor(path: string) {
     this.db = new DatabaseSync(path);
+    this.db.function('normalize_search',{deterministic:true},(value)=>normalizeSearch(typeof value==='string'?value:''));
     this.db.exec(`PRAGMA journal_mode=WAL;
       CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS tracks (id TEXT PRIMARY KEY, position INTEGER NOT NULL, payload TEXT NOT NULL);
@@ -32,7 +33,7 @@ export class CatalogStore {
     const ready = tracks.filter(track => track.status === 'ready');
     return { generatedAt, tracks, stats: { total: tracks.length, ready: ready.length, pending: tracks.length - ready.length, sizeBytes: ready.reduce((sum, track) => sum + (track.file?.sizeBytes ?? 0), 0) } };
   }
-  catalogPage(query: CatalogQuery): CatalogResponse {
+  catalogPage(query: CatalogQuery, owner?: string): CatalogResponse {
     const clauses: string[] = [];
     const values: (string | number)[] = [];
     if (query.q) { clauses.push('instr(search_text, ?) > 0'); values.push(normalizeSearch(query.q)); }
@@ -40,6 +41,15 @@ export class CatalogStore {
       const selected = query.filters[key];
       if (selected?.length) { clauses.push(`COALESCE(CAST(json_extract(payload, '$.${key}') AS TEXT), '') IN (${selected.map(() => '?').join(',')})`); values.push(...selected); }
     }
+    if (query.filters.title) { clauses.push("instr(normalize_search(json_extract(payload, '$.title')), ?) > 0"); values.push(normalizeSearch(query.filters.title)); }
+    const numbers = {sampleRate:'$.file.sampleRate',bitDepth:'$.file.bitDepth',sizeBytes:'$.file.sizeBytes',attempts:'$.attempts'} as const;
+    for (const key of Object.keys(numbers) as (keyof typeof numbers)[]) {
+      const range=query.filters[key]; if (!range) continue;
+      if(range.min!==undefined){clauses.push(`json_extract(payload, '${numbers[key]}') >= ?`);values.push(range.min);}
+      if(range.max!==undefined){clauses.push(`json_extract(payload, '${numbers[key]}') <= ?`);values.push(range.max);}
+    }
+    for(const key of ['queuedAt','completedAt'] as const){const range=query.filters[key];if(!range)continue;if(range.from){clauses.push(`json_extract(payload, '$.${key}') >= ?`);values.push(range.from);}if(range.to){clauses.push(`json_extract(payload, '$.${key}') < ?`);values.push(range.to);}}
+    if(query.filters.tags?.length){if(!owner)throw new Error('Tag filtering requires an owner');clauses.push(`EXISTS (SELECT 1 FROM selection_tag_tracks tm JOIN selection_tags t ON t.id=tm.tag_id WHERE tm.track_id=tracks.id AND t.owner=? AND t.id IN (${query.filters.tags.map(()=>'?').join(',')}))`);values.push(owner,...query.filters.tags);}
     const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
     const total = Number((this.db.prepare(`SELECT COUNT(*) AS total FROM tracks${where}`).get(...values) as { total: number }).total);
     const sortFields: Record<CatalogQuery['sort'], string> = {
