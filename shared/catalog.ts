@@ -24,6 +24,7 @@ export const trackSchema = z.object({
   file: audioFileSchema.nullable(),
   queuedAt: timestamp.nullable().optional(),
   completedAt: timestamp.nullable().optional(),
+  attempts: z.number().int().nonnegative().nullable().optional(),
 }).strict().superRefine((track, context) => {
   if ((track.status === 'ready') !== (track.file !== null)) {
     context.addIssue({ code: 'custom', path: ['file'], message: 'Only ready tracks have file properties' });
@@ -72,7 +73,7 @@ export const catalogQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
   pageSize: z.coerce.number().int().min(1).max(250).default(100),
   q: z.string().max(1000).default(''),
-  sort: z.enum(['position', 'status', 'title', 'artist', 'year', 'sampleRate', 'bitDepth', 'sizeBytes']).default('position'),
+  sort: z.enum(['position', 'status', 'title', 'artist', 'year', 'sampleRate', 'bitDepth', 'sizeBytes', 'attempts']).default('position'),
   direction: z.enum(['asc', 'desc']).default('asc'),
   filters: z.object({
     status: z.array(z.enum(['ready', 'pending'])).max(2).optional(),

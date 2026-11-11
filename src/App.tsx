@@ -4,6 +4,7 @@ import LightModeOutlined from '@mui/icons-material/LightModeOutlined';
 import SettingsBrightnessOutlined from '@mui/icons-material/SettingsBrightnessOutlined';
 import DarkModeOutlined from '@mui/icons-material/DarkModeOutlined';
 import MenuRounded from '@mui/icons-material/MenuRounded';
+import SettingsOutlined from '@mui/icons-material/SettingsOutlined';
 import LogoutRounded from '@mui/icons-material/LogoutRounded';
 import HistoryRounded from '@mui/icons-material/HistoryRounded';
 import SearchRounded from '@mui/icons-material/SearchRounded';
@@ -11,6 +12,8 @@ import CloseRounded from '@mui/icons-material/CloseRounded';
 import { signIn, signOut, requestLoginCode, uiActions, useAppDispatch, useAppSelector, useCatalogQuery } from './store';
 import type { CatalogQuery } from '../shared/catalog';
 import { version } from '../package.json';
+import { DownloadSettings } from './components/DownloadSettings';
+import { ColumnChooser } from './components/ColumnChooser';
 import { LibraryTable } from './components/LibraryTable';
 import { HistoryPopover } from './components/HistoryPopover';
 import { TrackDetails } from './components/TrackDetails';
@@ -47,7 +50,7 @@ export default function App() {
   const deferredSearch = useDeferredValue(search);
   const catalogQuery = useMemo<CatalogQuery>(() => ({ page, pageSize, q: deferredSearch, sort: (sorting[0]?.id ?? 'position') as CatalogQuery['sort'], direction: sorting[0]?.desc ? 'desc' : 'asc', filters: Object.fromEntries(columnFilters.map(filter => [filter.id, filter.value])) }), [page, pageSize, deferredSearch, sorting, columnFilters]);
   const { currentData: data, isLoading, isFetching, isError, refetch } = useCatalogQuery(catalogQuery, { skip: !authenticated, pollingInterval: 30000, skipPollingIfUnfocused: true, refetchOnFocus: true, refetchOnReconnect: true });
-  const [aiOpen, setAiOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);const [settingsOpen,setSettingsOpen]=useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null); const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
   useEffect(() => { if (data?.pagination && page > Math.max(1, data.pagination.pages)) dispatch(uiActions.setPage(Math.max(1, data.pagination.pages))); }, [data?.pagination, page, dispatch]);
   if (bootstrapping) return <Box className="login-screen"><CircularProgress size={24} aria-label="Checking session" /></Box>;
@@ -58,15 +61,16 @@ export default function App() {
       <ToggleButton value="light" aria-label="Light theme"><Tooltip title="Light"><LightModeOutlined fontSize="small" /></Tooltip></ToggleButton>
       <ToggleButton value="system" aria-label="System theme"><Tooltip title="System"><SettingsBrightnessOutlined fontSize="small" /></Tooltip></ToggleButton>
       <ToggleButton value="dark" aria-label="Dark theme"><Tooltip title="Dark"><DarkModeOutlined fontSize="small" /></Tooltip></ToggleButton>
-    </ToggleButtonGroup></Box><MenuItem onClick={() => { setMenuAnchor(null); setHistoryAnchor(null); dispatch(signOut()); }}><LogoutRounded sx={{ fontSize: 17, mr: 1 }} />Sign out</MenuItem></Menu></Box>
+    </ToggleButtonGroup></Box><MenuItem onClick={()=>{setMenuAnchor(null);setSettingsOpen(true);}}><SettingsOutlined sx={{fontSize:17,mr:1}}/>Settings</MenuItem><MenuItem onClick={() => { setMenuAnchor(null); setHistoryAnchor(null); dispatch(signOut()); }}><LogoutRounded sx={{ fontSize: 17, mr: 1 }} />Sign out</MenuItem></Menu></Box>
     <Box component="main" className="workspace">{authError && <Alert severity="error" sx={{ mt: 1 }}>{authError}</Alert>}
       <Box className="toolbar"><TextField placeholder="Search songs, artists and albums" aria-label="Search songs" value={search} onChange={event => dispatch(uiActions.setSearch(event.target.value))} className="search" slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRounded sx={{ fontSize: 18, color: 'text.secondary' }} /></InputAdornment>, endAdornment: search ? <InputAdornment position="end"><IconButton aria-label="Clear search" onClick={() => dispatch(uiActions.setSearch(''))}><CloseRounded sx={{ fontSize: 15 }} /></IconButton></InputAdornment> : undefined } }} />
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }} className="statistics" aria-live="polite">{data?.demo && <Typography className="demo-label" component="span" color="warning.main" sx={{ fontSize: 10 }}>Demo · fictional songs</Typography>}<Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>Total <b>{stats?.total ?? '—'}</b></Typography><Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>ready <b className="ready-number">{stats?.ready ?? '—'}</b></Typography><Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>pending <b>{stats?.pending ?? '—'}</b></Typography><Tooltip title="Download history"><IconButton aria-label="Download history" onClick={event => setHistoryAnchor(event.currentTarget)}><HistoryRounded sx={{ fontSize: 20 }} /></IconButton></Tooltip></Stack>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }} className="statistics" aria-live="polite">{data?.demo && <Typography className="demo-label" component="span" color="warning.main" sx={{ fontSize: 10 }}>Demo · fictional songs</Typography>}<Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>Total <b>{stats?.total ?? '—'}</b></Typography><Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>ready <b className="ready-number">{stats?.ready ?? '—'}</b></Typography><Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>pending <b>{stats?.pending ?? '—'}</b></Typography><ColumnChooser /><Tooltip title="Download history"><IconButton aria-label="Download history" onClick={event => setHistoryAnchor(event.currentTarget)}><HistoryRounded sx={{ fontSize: 20 }} /></IconButton></Tooltip></Stack>
       </Box>
       <Box className="loading-line">{isFetching && <LinearProgress sx={{ height: 2 }} />}</Box>
       {isError && <Alert severity="warning" sx={{ mb: 1 }} action={<Button onClick={() => void refetch()}>Retry</Button>}>{data ? 'Unable to refresh the library. Showing the last available data.' : 'Unable to load the library.'}</Alert>}
       {isLoading || (isFetching && !data) ? <Box className="initial-loading"><CircularProgress size={24} /></Box> : <LibraryTable tracks={data?.tracks ?? []} total={data?.pagination?.total ?? 0} facets={data?.facets} />}
     </Box>
+    <DownloadSettings open={settingsOpen} onClose={()=>setSettingsOpen(false)} />
     <AiDrawer open={aiOpen} onClose={() => setAiOpen(false)} />
     <HistoryPopover anchor={historyAnchor} onClose={() => setHistoryAnchor(null)} />
     <TrackDetails track={data?.tracks.find(track => track.id === detailsId)} onClose={() => dispatch(uiActions.setDetails(null))} />

@@ -128,3 +128,10 @@ test('catalog pages search, filter and sort the full library before limiting row
     assert.equal(noMatch.pagination?.total, 0);
   } finally { store.close(); }
 });
+
+test('attempt counts survive catalog snapshots for ready and pending tracks and sort numerically',()=>{
+ const store=new CatalogStore(':memory:');try{
+  const snapshot=snapshotSchema.parse({generatedAt:at(1),tracks:[{...pending,id:'ready',status:'ready',file:exampleFile,attempts:4},{...pending,id:'pending',attempts:101},{...pending,id:'legacy'}]});store.import(snapshot);
+  const page=store.catalogPage({page:1,pageSize:25,q:'',sort:'attempts',direction:'desc',filters:{}});assert.deepEqual(page.tracks.map(track=>[track.id,track.attempts]),[['pending',101],['ready',4],['legacy',undefined]]);assert.throws(()=>snapshotSchema.parse({generatedAt:at(1),tracks:[{...pending,attempts:-1}]}));
+ }finally{store.close();}
+});

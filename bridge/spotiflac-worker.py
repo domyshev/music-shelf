@@ -28,8 +28,8 @@ def send(path, data):
     request=urllib.request.Request(SITE+path,data=body,headers=headers,method='POST')
     with urllib.request.urlopen(request,timeout=20) as response:return json.load(response)
 
-def local(path,data=None,timeout=60):
-    request=urllib.request.Request(LOCAL+path,data=None if data is None else json.dumps(data).encode(),headers={'Content-Type':'application/json'})
+def local(path,data=None,timeout=60,method=None):
+    request=urllib.request.Request(LOCAL+path,data=None if data is None else json.dumps(data).encode(),headers={'Content-Type':'application/json'},method=method)
     with urllib.request.urlopen(request,timeout=timeout) as response:return json.load(response)
 
 def clean_text(value,limit):
@@ -55,6 +55,14 @@ def run(job):
         for j in jobs:counts[j.get('state','unknown')]=counts.get(j.get('state','unknown'),0)+1
         items=[{'id':j.get('id'),'spotify_id':j.get('track',{}).get('spotify_id'),'title':j.get('track',{}).get('title'),'artist':j.get('track',{}).get('artist'),'state':j.get('state'),'attempts':j.get('attempts'),'next_attempt_at':j.get('next_attempt_at'),'error_code':j.get('error_code')} for j in jobs[-100:]]
         return {'paused':data.get('paused'),'active_id':data.get('active_id'),'counts':counts,'jobs':items,'truncated':len(jobs)>100}
+    if kind=='retry_settings':
+        if payload!={}:raise ValueError('Invalid settings request')
+        data=local('/v1/settings',timeout=15)
+        return {'auto_stop':data['auto_stop'],'max_attempts':data['max_attempts']}
+    if kind=='set_retry_settings':
+        if set(payload)!={'auto_stop','max_attempts'} or type(payload['auto_stop']) is not bool or type(payload['max_attempts']) is not int or not 1<=payload['max_attempts']<=1000000:raise ValueError('Invalid retry settings')
+        data=local('/v1/settings',payload,timeout=15,method='PUT')
+        return {'auto_stop':data['auto_stop'],'max_attempts':data['max_attempts']}
     if kind=='enqueue':
         tracks=payload.get('tracks')
         if not isinstance(tracks,list) or not 1<=len(tracks)<=20:raise ValueError('Invalid tracks')

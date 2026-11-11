@@ -109,6 +109,16 @@ export function createApp(options: AppOptions) {
     if (!options.features?.setOriginalLanguage(String(request.params.id),data.data.language)) { response.status(404).json({error:'Song not found'}); return; }
     response.json({ok:true});
   });
+  app.get('/api/download/settings', authorize, async (_request,response) => {
+    if(!options.bridge){response.status(503).json({error:'Download service unavailable'});return;}
+    try {const raw=await options.bridge.execute('retry_settings',{},20000);const result=z.object({auto_stop:z.boolean(),max_attempts:z.number().int().min(1).max(1000000)}).safeParse(raw);if(!result.success)throw new Error();response.json({enabled:result.data.auto_stop,maxAttempts:result.data.max_attempts,canEdit:options.queueUsers?.includes(response.locals.email)??false});}catch{response.status(503).json({error:'Unable to load download settings'});}
+  });
+  app.put('/api/download/settings', authorize, sameOrigin, express.json({limit:'2kb'}), async (request,response) => {
+    if(!options.queueUsers?.includes(response.locals.email)){response.status(403).json({error:'Only the owner can change download settings'});return;}
+    const parsed=z.object({enabled:z.boolean(),maxAttempts:z.number().int().min(1).max(1000000)}).strict().safeParse(request.body);if(!parsed.success){response.status(400).json({error:'Invalid download settings'});return;}
+    if(!options.bridge){response.status(503).json({error:'Download service unavailable'});return;}
+    try {const raw=await options.bridge.execute('set_retry_settings',{auto_stop:parsed.data.enabled,max_attempts:parsed.data.maxAttempts},20000);const result=z.object({auto_stop:z.boolean(),max_attempts:z.number().int().min(1).max(1000000)}).safeParse(raw);if(!result.success)throw new Error();response.json({enabled:result.data.auto_stop,maxAttempts:result.data.max_attempts,canEdit:true});}catch{response.status(503).json({error:'Unable to save download settings'});}
+  });
   app.get('/api/ai/settings', authorize, (_request, response) => response.json(options.features?.settings(response.locals.email) ?? {model:'',hasToken:false}));
   app.put('/api/ai/settings', authorize, sameOrigin, express.json({limit:'8kb'}), (request,response) => {
     const parsed=z.object({model:z.string().max(200),token:z.string().min(1).max(512).optional(),removeToken:z.boolean().optional()}).strict().safeParse(request.body);

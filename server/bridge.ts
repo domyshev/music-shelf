@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 
-type Kind = 'search' | 'queue_status' | 'enqueue';
+type Kind = 'search' | 'queue_status' | 'enqueue' | 'retry_settings' | 'set_retry_settings';
 export class Bridge {
   private db: DatabaseSync;
   constructor(path:string) {

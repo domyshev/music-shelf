@@ -2,7 +2,7 @@ import { configureStore, createSlice, type PayloadAction, type ThunkAction, type
 import { createApi, fetchBaseQuery, type BaseQueryFn, type FetchArgs, type FetchBaseQueryError } from '@reduxjs/toolkit/query/react';
 import { setupListeners } from '@reduxjs/toolkit/query';
 import { useDispatch, useSelector } from 'react-redux';
-import type { SortingState, ColumnSizingState, ColumnFiltersState } from '@tanstack/react-table';
+import type { SortingState, ColumnSizingState, ColumnFiltersState, VisibilityState } from '@tanstack/react-table';
 import { eventKinds, type CatalogResponse, type CatalogQuery, type HistoryResponse, type HistoryFilters, type LibraryEvent } from '../shared/catalog';
 import { emptyHistorySelection, isCalendarDate, type HistorySelection } from './historyFilters';
 
@@ -15,11 +15,14 @@ const auth = createSlice({ name: 'auth', initialState: { authenticated: false, b
   loggedOut(state) { state.authenticated = false; state.bootstrapping = false; state.checking = false; state.email = ''; state.error = ''; },
 } });
 export type ThemeChoice = 'light' | 'system' | 'dark';
-export const columnIds = ['status', 'title', 'artist', 'year', 'sampleRate', 'bitDepth', 'sizeBytes'];
+export const columnIds = ['status', 'title', 'artist', 'year', 'sampleRate', 'bitDepth', 'sizeBytes', 'attempts'];
 function readPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem('music-shelf.preferences') ?? '{}');
-    const columnOrder = Array.isArray(saved.columnOrder) && saved.columnOrder.length === columnIds.length && new Set(saved.columnOrder).size === columnIds.length && saved.columnOrder.every((id: string) => columnIds.includes(id)) ? saved.columnOrder as string[] : columnIds;
+    const existingOrder: string[] = Array.isArray(saved.columnOrder) ? [...new Set<string>(saved.columnOrder.filter((id:unknown):id is string => typeof id==='string' && columnIds.includes(id)))] : [];
+    const columnOrder = [...existingOrder,...columnIds.filter(id=>!existingOrder.includes(id))];
+    const columnVisibility: VisibilityState = {};
+    for (const id of columnIds) if (typeof saved.columnVisibility?.[id] === 'boolean') columnVisibility[id]=saved.columnVisibility[id];
     const columnSizing: ColumnSizingState = {};
     for (const id of columnIds) if (Number.isFinite(saved.columnSizing?.[id])) columnSizing[id] = Math.max(64, Math.min(1200, saved.columnSizing[id]));
     const theme: ThemeChoice = ['light', 'system', 'dark'].includes(saved.theme) ? saved.theme : 'system';
@@ -31,8 +34,8 @@ function readPreferences() {
       end: isCalendarDate(raw?.end) ? raw.end : '',
     };
     if (historyFilters.start && historyFilters.end && historyFilters.start > historyFilters.end) { historyFilters.start = ''; historyFilters.end = ''; }
-    return { columnOrder, columnSizing, theme, columnFilters, historyFilters };
-  } catch { return { columnOrder: columnIds, columnSizing: {} as ColumnSizingState, theme: 'system' as ThemeChoice, columnFilters: [] as ColumnFiltersState, historyFilters: emptyHistorySelection }; }
+    return { columnOrder, columnSizing, columnVisibility, theme, columnFilters, historyFilters };
+  } catch { return { columnOrder: columnIds, columnSizing: {} as ColumnSizingState, columnVisibility: {} as VisibilityState, theme: 'system' as ThemeChoice, columnFilters: [] as ColumnFiltersState, historyFilters: emptyHistorySelection }; }
 }
 const preferences = readPreferences();
 const { historyFilters: savedHistoryFilters, ...uiPreferences } = preferences;
@@ -43,6 +46,7 @@ const ui = createSlice({ name: 'ui', initialState: { page: 1, pageSize: 25, sear
   setSorting(state, action: PayloadAction<SortingState>) { state.sorting = action.payload; state.page = 1; },
   setDetails(state, action: PayloadAction<string | null>) { state.detailsId = action.payload; },
   setColumnSizing(state, action: PayloadAction<ColumnSizingState>) { state.columnSizing = action.payload; },
+  setColumnVisibility(state, action: PayloadAction<VisibilityState>) { state.columnVisibility = action.payload; },
   setColumnOrder(state, action: PayloadAction<string[]>) { state.columnOrder = action.payload; },
   setColumnFilters(state, action: PayloadAction<ColumnFiltersState>) { state.columnFilters = action.payload; state.page = 1; },
   setTheme(state, action: PayloadAction<ThemeChoice>) { state.theme = action.payload; },
@@ -74,9 +78,9 @@ export const libraryApi = createApi({ reducerPath: 'libraryApi', baseQuery: guar
 export const store = configureStore({ reducer: { auth: auth.reducer, ui: ui.reducer, history: history.reducer, [libraryApi.reducerPath]: libraryApi.reducer }, middleware: getDefault => getDefault().concat(libraryApi.middleware) });
 let lastPreferences = '';
 store.subscribe(() => {
-  const { columnOrder, columnSizing, columnFilters, theme } = store.getState().ui;
+  const { columnOrder, columnSizing, columnVisibility, columnFilters, theme } = store.getState().ui;
   const historyFilters = store.getState().history.filters;
-  const value = JSON.stringify({ columnOrder, columnSizing, columnFilters, theme, historyFilters });
+  const value = JSON.stringify({ columnOrder, columnSizing, columnVisibility, columnFilters, theme, historyFilters });
   if (value !== lastPreferences) { lastPreferences = value; try { localStorage.setItem('music-shelf.preferences', value); } catch {} }
 });
 setupListeners(store.dispatch);

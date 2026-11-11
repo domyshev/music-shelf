@@ -28,6 +28,13 @@ class WorkerTests(unittest.TestCase):
         with patch.object(worker,'local',return_value={'created':1,'paused':False,'jobs':[]} ) as local:
             result=worker.run(job('enqueue',{'tracks':[track]}))
         self.assertEqual(result['created'],1);local.assert_called_once_with('/v1/jobs',{'tracks':[track]},timeout=20)
+    def test_retry_settings_are_validated_and_forwarded(self):
+        with patch.object(worker,'local',return_value={'auto_stop':True,'max_attempts':100}) as local:
+            result=worker.run(job('set_retry_settings',{'auto_stop':True,'max_attempts':100}))
+            self.assertEqual(result,{'auto_stop':True,'max_attempts':100});local.assert_called_once_with('/v1/settings',{'auto_stop':True,'max_attempts':100},timeout=15,method='PUT')
+        with patch.object(worker,'local') as local:
+            with self.assertRaises(ValueError):worker.run(job('set_retry_settings',{'auto_stop':True,'max_attempts':0}))
+            local.assert_not_called()
     def test_no_commands_or_urls_are_executed(self):
         with self.assertRaises(ValueError):worker.run(job('shell',{'command':'anything'}))
 

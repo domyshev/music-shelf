@@ -12,16 +12,17 @@ import { EntityLink } from './EntityLink';
 
 const helper = createColumnHelper<Track>();
 const filterIds = new Set(['status', 'artist', 'year']);
-const rightAligned = new Set(['sampleRate', 'bitDepth', 'sizeBytes', 'year']);
+const rightAligned = new Set(['sampleRate', 'bitDepth', 'sizeBytes', 'year', 'attempts']);
 export function LibraryTable({ tracks, total, facets }: { tracks: Track[]; total: number; facets?: { status: string[]; artist: string[]; year: string[] } }) {
   const dispatch = useAppDispatch();
-  const { sorting, columnOrder, columnSizing, columnFilters, page, pageSize } = useAppSelector(state => state.ui);
+  const { sorting, columnOrder, columnSizing, columnVisibility, columnFilters, page, pageSize } = useAppSelector(state => state.ui);
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: string; target: string; x: number; moved: boolean } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [filterAnchor, setFilterAnchor] = useState<{ element: HTMLElement; id: string } | null>(null);
   const columns = useMemo(() => [
     helper.accessor('status', { header: 'Status', size: 108, cell: info => <Status value={info.getValue()} /> }),
+    helper.accessor('attempts', { header: 'Attempts', size: 95, sortUndefined: 'last', cell: info => info.getValue() ?? '—' }),
     helper.accessor('title', { header: 'Song', size: 350, minSize: 120, cell: info => <OverflowTooltip text={info.getValue()}><ButtonBase className="song-name" onClick={() => dispatch(uiActions.setDetails(info.row.original.id))}>{info.getValue()}</ButtonBase></OverflowTooltip> }),
     helper.accessor('artist', { header: 'Artist / band', size: 250, cell: info => <OverflowTooltip text={info.getValue()}><EntityLink kind="artist" name={info.getValue()} ellipsis /></OverflowTooltip> }),
     helper.accessor('year', { header: 'Year', size: 112, cell: info => info.getValue() ?? '—' }),
@@ -31,7 +32,7 @@ export function LibraryTable({ tracks, total, facets }: { tracks: Track[]; total
   ], [dispatch]);
   const table = useReactTable({
     data: tracks, columns, defaultColumn: { minSize: 64, maxSize: 1200, filterFn: (row, id, selected: string[]) => selected.includes(String(row.getValue(id) ?? '')) },
-    state: { sorting, columnOrder, columnSizing, columnFilters }, manualFiltering: true, manualSorting: true, manualPagination: true, rowCount: total, enableMultiSort: false, getRowId: row => row.id,
+    state: { sorting, columnOrder, columnSizing, columnVisibility, columnFilters }, manualFiltering: true, manualSorting: true, manualPagination: true, rowCount: total, enableMultiSort: false, getRowId: row => row.id,
     columnResizeMode: 'onChange',
     onColumnSizingChange: update => dispatch(uiActions.setColumnSizing(typeof update === 'function' ? update(columnSizing) : update)),
     onColumnFiltersChange: update => dispatch(uiActions.setColumnFilters(typeof update === 'function' ? update(columnFilters) : update)),
@@ -87,9 +88,9 @@ export function LibraryTable({ tracks, total, facets }: { tracks: Track[]; total
           </TableCell>;
         })}</TableRow>)}</TableHead>
         <TableBody>
-          {paddingTop > 0 && <TableRow aria-hidden="true"><TableCell colSpan={columns.length} sx={{ height: paddingTop, p: 0, border: 0 }} /></TableRow>}
+          {paddingTop > 0 && <TableRow aria-hidden="true"><TableCell colSpan={table.getVisibleLeafColumns().length} sx={{ height: paddingTop, p: 0, border: 0 }} /></TableRow>}
           {items.map(item => { const row = rows[item.index]; return <TableRow key={row.id} hover aria-rowindex={item.index + 2} data-testid="track-row" sx={{ height: 36 }}>{row.getVisibleCells().map(cell => <TableCell key={cell.id} align={rightAligned.has(cell.column.id) ? 'right' : 'left'} sx={{ whiteSpace: 'nowrap', overflow: 'hidden', height: 36, py: 0, fontVariantNumeric: 'tabular-nums' }}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}</TableRow>; })}
-          {paddingBottom > 0 && <TableRow aria-hidden="true"><TableCell colSpan={columns.length} sx={{ height: paddingBottom, p: 0, border: 0 }} /></TableRow>}
+          {paddingBottom > 0 && <TableRow aria-hidden="true"><TableCell colSpan={table.getVisibleLeafColumns().length} sx={{ height: paddingBottom, p: 0, border: 0 }} /></TableRow>}
         </TableBody>
       </Table>
       {rows.length === 0 && <Box className="empty-state"><Typography sx={{ fontWeight: 600 }}>No songs found</Typography><Typography variant="body2" color="text.secondary">Try a different search or clear the filters.</Typography></Box>}
