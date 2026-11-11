@@ -11,7 +11,7 @@ import { Bridge } from '../server/bridge.js';
 test('AI tool loop reads actual catalog and reports tool results to the model',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'shelf-assistant-'));const db=join(dir,'db.sqlite');const store=new CatalogStore(db);let calls=0;
  const transport:typeof fetch=async(_url,init)=>{const data=JSON.parse(String(init?.body));calls++;
-  if(calls===1){assert.ok(data.tools.some((t:{function:{name:string}})=>t.function.name==='search_library'));return Response.json({choices:[{message:{role:'assistant',content:null,tool_calls:[{id:'call1',type:'function',function:{name:'search_library',arguments:JSON.stringify({query:'Hendrix'})}}]}}]});}
+  if(calls===1){assert.ok(data.tools.some((t:{function:{name:string}})=>t.function.name==='search_library'));assert.match(data.messages[0].content,/Create the tag after identifying the selection and before enqueueing/);assert.match(data.messages[0].content,/Never claim a playlist was created or synchronized without a tool result/);return Response.json({choices:[{message:{role:'assistant',content:null,tool_calls:[{id:'call1',type:'function',function:{name:'search_library',arguments:JSON.stringify({query:'Hendrix'})}}]}}]});}
   const result=data.messages.find((m:{role:string})=>m.role==='tool');assert.ok(result.content.includes('Little Wing'));assert.equal(result.tool_call_id,'call1');return Response.json({choices:[{message:{content:'Found Little Wing'}}]});};
  const feature=new Features(db,Buffer.alloc(32,4),transport);try{
   store.import({generatedAt:'2026-01-01T00:00:00.000Z',tracks:[{id:'123',title:'Little Wing',artist:'Jimi Hendrix',album:'',year:null,status:'pending',file:null}]});
@@ -63,6 +63,19 @@ test('enqueue requires a permitted account and IDs returned by this search',asyn
   await assert.rejects(runTool(store,feature,'a@example.invalid',bridge,true,found,'enqueue_tracks',JSON.stringify({ids:['A'.repeat(22)]})));
   assert.equal(bridge.claim(),null);
  }finally{bridge.close();feature.close();store.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('selection tags retain the library context and reject unknown tracks or unauthorized creation',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'shelf-selection-'));const db=join(dir,'db.sqlite');const store=new CatalogStore(db),features=new Features(db,Buffer.alloc(32,7)),bridge=new Bridge(db);const found=new Map();
+ try{
+  store.import({generatedAt:'2026-01-01T00:00:00.000Z',tracks:[{id:'existing',title:'Song',artist:'Artist',album:'',year:null,status:'pending',file:null}]});
+  const args=JSON.stringify({association:'moon.dust',description:'Expand the collection',track_ids:['existing']});
+  await assert.rejects(runTool(store,features,'a@example.invalid',bridge,false,found,'create_selection_tag',args));
+  await assert.rejects(runTool(store,features,'a@example.invalid',bridge,true,found,'create_selection_tag',JSON.stringify({association:'moon.dust',description:'Test',track_ids:['unknown']})));
+  const tag=await runTool(store,features,'a@example.invalid',bridge,true,found,'create_selection_tag',args) as {name:string;basis:{tracks:{id:string}[]}};
+  assert.equal(tag.name,'agent-moon.dust-1');assert.equal(tag.basis.tracks[0].id,'existing');
+  assert.deepEqual(await runTool(store,features,'b@example.invalid',bridge,false,found,'list_selection_tags','{}'),[]);
+ }finally{bridge.close();features.close();store.close();rmSync(dir,{recursive:true,force:true});}
 });
 
 test('assistant handles thirty tool calls in one response and multipart text',async()=>{

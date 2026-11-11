@@ -75,8 +75,18 @@ def run(job):
     raise ValueError('Unknown operation')
 
 def main():
+    from selection_playlists import reconcile
+    next_sync=0
     while True:
         try:
+            if time.monotonic() >= next_sync:
+                next_sync=time.monotonic()+60
+                try:
+                    selections=send('/api/bridge/selections',{})['selections']
+                    jobs=local('/v1/jobs',timeout=15)['jobs']
+                    reconcile(Path.home()/'Music/SpotiFLAC-API',selections,jobs)
+                except Exception:
+                    print('Music Shelf playlist sync unavailable; retrying',flush=True)
             job=send('/api/bridge/claim',{}).get('job')
             if job:
                 try:result=run(job)

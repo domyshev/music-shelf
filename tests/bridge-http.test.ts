@@ -10,6 +10,7 @@ import { Bridge } from '../server/bridge.js';
 import { CatalogStore } from '../server/store.js';
 import { EmailAuth } from '../server/auth.js';
 import { createApp } from '../server/http.js';
+import { Features } from '../server/features.js';
 
 test('bridge requires signed path-bound requests and rejects replay',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'shelf-bridge-http-'));const db=join(dir,'db.sqlite'),store=new CatalogStore(db),auth=new EmailAuth(db,Buffer.alloc(32,8)),bridge=new Bridge(db),keys=generateKeyPairSync('ed25519');
@@ -21,4 +22,14 @@ test('bridge requires signed path-bound requests and rejects replay',async()=>{
   const first=await fetch(base+'/api/bridge/claim',request('/api/bridge/claim','a'.repeat(32)));assert.equal(first.status,200);assert.deepEqual(await first.json(),{job:null});
   assert.equal((await fetch(base+'/api/bridge/claim',request('/api/bridge/claim','a'.repeat(32)))).status,403);
  }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));bridge.close();auth.close();store.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('signed selection sync exposes only the configured owner and excludes private context',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'shelf-selections-http-'));const db=join(dir,'db.sqlite'),store=new CatalogStore(db),auth=new EmailAuth(db,Buffer.alloc(32,8)),bridge=new Bridge(db),features=new Features(db,Buffer.alloc(32,4)),keys=generateKeyPairSync('ed25519');
+ const tag=features.tags.create('owner@example.test','moon.dust','private description',{private:'context'},['A'.repeat(22)]);
+ features.tags.create('other@example.test','other.song','private',{},['B'.repeat(22)]);
+ const server=createApp({store,auth,bridge,features,queueUsers:['owner@example.test'],publisherKey:keys.publicKey,mailer:{async send(){}},origin:'http://test.invalid'}).listen(0,'127.0.0.1');await once(server,'listening');const base=`http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+ const path='/api/bridge/selections',body=JSON.stringify({nonce:'b'.repeat(32)}),ts=String(Math.floor(Date.now()/1000)),signature=sign(null,Buffer.from(ts+'\n'+path+'\n'+body),keys.privateKey).toString('base64');
+ try{const res=await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json','X-Shelf-Timestamp':ts,'X-Shelf-Signature':signature},body});assert.equal(res.status,200);assert.deepEqual(await res.json(),{selections:[{id:tag.id,name:tag.name,trackIds:tag.trackIds}]});}
+ finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));features.close();bridge.close();auth.close();store.close();rmSync(dir,{recursive:true,force:true});}
 });

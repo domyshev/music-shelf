@@ -1,14 +1,17 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import type { CatalogStore } from './store.js';
-import { systemPrompt, tools, runTool } from './assistant.js';
+import { systemPrompt, selectionInstructions, tools, runTool } from './assistant.js';
 import type { Bridge } from './bridge.js';
 import { normalizePhrase } from './translation-phrase.js';
+import { Tags } from './tags.js';
 
 export class Features {
   private db: DatabaseSync;
   private key: Buffer;
+  readonly tags: Tags;
   constructor(path: string, secret: Buffer, private transport: typeof fetch = fetch) {
+    this.tags = new Tags(path);
     this.key = createHmac('sha256', secret).update('music-shelf/openrouter-token/v1').digest();
     this.db = new DatabaseSync(path);
     this.db.exec(`CREATE TABLE IF NOT EXISTS track_texts (track_id TEXT NOT NULL, email TEXT NOT NULL, lyrics TEXT NOT NULL, translation TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(track_id,email));
@@ -27,7 +30,7 @@ export class Features {
       this.db.exec('COMMIT');
     } catch(error) {this.db.exec('ROLLBACK');throw error;}
   }
-  close() { this.db.close(); }
+  close() { this.tags.close(); this.db.close(); }
   lyrics(id: string, email: string) {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return null;
     const row = this.db.prepare('SELECT original_language, texts FROM track_text_languages WHERE track_id=? AND email=?').get(id, email) as {original_language:string;texts:string}|undefined;
@@ -95,7 +98,7 @@ export class Features {
   async chat(email: string, messages: {role:'user'|'assistant';content:string}[], store: CatalogStore, bridge?: Bridge, canQueue=false) {
     const settings = this.credential(email); if (!settings) return null;
     const found = new Map();
-    const conversation: object[] = [{role:'system',content:systemPrompt}, ...messages];
+    const conversation: object[] = [{role:'system',content:systemPrompt + selectionInstructions}, ...messages];
     let totalCalls=0;
     for (let round=0;round<12;round++) {
       const response = await this.transport('https://openrouter.ai/api/v1/chat/completions', {

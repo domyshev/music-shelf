@@ -185,7 +185,7 @@ export function createApp(options: AppOptions) {
     try { response.json(options.store.history(limit, cursor, filters.data)); }
     catch { response.status(400).json({ error: 'Invalid history cursor' }); }
   });
-  app.post(['/api/bridge/claim','/api/bridge/complete'], express.raw({type:'application/json',limit:'300kb'}), (request,response) => {
+  app.post(['/api/bridge/claim','/api/bridge/complete','/api/bridge/selections'], express.raw({type:'application/json',limit:'300kb'}), (request,response) => {
     if (!options.publisherKey || !options.bridge) {response.status(503).json({error:'Bridge unavailable'});return;}
     const timestamp=request.get('X-Shelf-Timestamp') ?? '', signature=request.get('X-Shelf-Signature') ?? '';
     if (!/^\d{10}$/.test(timestamp) || Math.abs(now()-Number(timestamp)*1000)>120000 || !Buffer.isBuffer(request.body)) {response.status(400).json({error:'Invalid request'});return;}
@@ -195,6 +195,11 @@ export function createApp(options: AppOptions) {
       const body=JSON.parse(request.body.toString('utf8')) as {nonce?:unknown;id?:unknown;result?:unknown};
       if(typeof body.nonce!=='string' || !/^[a-f0-9]{32}$/.test(body.nonce) || !options.bridge.nonce(body.nonce,now())) {response.status(403).json({error:'Invalid or repeated request'});return;}
       if(request.path.endsWith('/claim')) {response.json({job:options.bridge.claim()});return;}
+      if(request.path.endsWith('/selections')) {
+        if (!options.features || options.queueUsers?.length !== 1) {response.status(503).json({error:'Selection synchronization is not configured for exactly one owner'});return;}
+        const selections=options.features.tags.list(options.queueUsers[0]).map(({id,name,trackIds})=>({id,name,trackIds}));
+        response.json({selections});return;
+      }
       if(typeof body.id!=='string' || !/^[a-f0-9-]{36}$/.test(body.id) || typeof body.result!=='object' || !body.result) {response.status(400).json({error:'Invalid result'});return;}
       response.json({ok:options.bridge.complete(body.id,body.result)});
     } catch {response.status(400).json({error:'Invalid bridge request'});}
