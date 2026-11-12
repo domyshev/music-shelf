@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 const tracks = Array.from({ length: 5000 }, (_, index) => ({ id: `fixture-${index}`, title: `Fictional song ${String(index).padStart(4, '0')}`, artist: `Demo Artist ${index % 7}`, album: 'Synthetic album', year: 1960 + index % 10, status: 'pending', file: null }));
 test.beforeEach(async ({ page }) => {
+  let maxTokens:number|null=null;
+  await page.route('**/api/ai/output-limit',route=>{if(route.request().method()==='PUT')maxTokens=route.request().postDataJSON().maxTokens;return route.fulfill({json:{maxTokens}});});
   await page.route('**/api/ai/chat/turn/*', route=>route.fulfill({json:{state:'complete',reply:'Done'}}));
   await page.route('**/api/catalog?*', route => {
     const params = new URL(route.request().url()).searchParams;
@@ -22,6 +24,13 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('textbox', { name: 'Verification code', exact: true }).fill('123456');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('table', { name: 'Songs', exact: true })).toBeVisible();
+});
+test('selects the saved output token limit under the assistant input',async({page})=>{
+ await page.getByRole('button',{name:'AI assistant',exact:true}).click();
+ const limit=page.getByRole('combobox',{name:'Output tokens'});await expect(limit).toHaveText('Automatic');
+ await limit.click();await page.getByRole('option',{name:'16,384'}).click();await expect(limit).toHaveText('16,384');
+ await page.reload();await page.getByRole('button',{name:'AI assistant',exact:true}).click();await expect(limit).toHaveText('16,384');
+ await limit.click();await page.getByRole('option',{name:'Automatic'}).click();await expect(limit).toHaveText('Automatic');
 });
 test('virtualizes a large library, scrolls the table only, searches, sorts and retains login', async ({ page }) => {
   await page.getByRole('combobox').click();

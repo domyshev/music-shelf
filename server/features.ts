@@ -24,6 +24,7 @@ export class Features {
       CREATE TABLE IF NOT EXISTS track_original_languages (track_id TEXT PRIMARY KEY, language TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS song_word_translations (track_id TEXT NOT NULL, email TEXT NOT NULL, source_language TEXT NOT NULL, target_language TEXT NOT NULL, word TEXT NOT NULL, translation TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(track_id,email,source_language,target_language,word));
       CREATE TABLE IF NOT EXISTS ai_settings (email TEXT PRIMARY KEY, model TEXT NOT NULL, token BLOB, iv BLOB, tag BLOB);
+      CREATE TABLE IF NOT EXISTS ai_output_limits (email TEXT PRIMARY KEY, max_tokens INTEGER);
       CREATE TABLE IF NOT EXISTS feature_migrations (name TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS song_translation_variants (id INTEGER PRIMARY KEY, track_id TEXT NOT NULL, email TEXT NOT NULL, source_language TEXT NOT NULL, target_language TEXT NOT NULL, word TEXT NOT NULL, translation TEXT NOT NULL, ai INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS song_translation_lookup ON song_translation_variants(track_id,email,source_language,word);`);
@@ -88,6 +89,13 @@ export class Features {
     this.db.prepare(`INSERT INTO ai_settings(email,model,token,iv,tag) VALUES(?,?,?,?,?) ON CONFLICT(email) DO UPDATE SET model=excluded.model,token=excluded.token,iv=excluded.iv,tag=excluded.tag`).run(email, model, encrypted, iv, tag);
     return this.settings(email);
   }
+  outputLimit(email:string) {
+    const row=this.db.prepare('SELECT max_tokens FROM ai_output_limits WHERE email=?').get(email) as {max_tokens:number|null}|undefined;
+    return row?.max_tokens ?? null;
+  }
+  setOutputLimit(email:string,value:number|null) {
+    this.db.prepare('INSERT INTO ai_output_limits(email,max_tokens) VALUES(?,?) ON CONFLICT(email) DO UPDATE SET max_tokens=excluded.max_tokens').run(email,value);
+  }
   private credential(email: string) {
     const row = this.db.prepare('SELECT model,token,iv,tag FROM ai_settings WHERE email=?').get(email) as {model:string;token:Uint8Array|null;iv:Uint8Array|null;tag:Uint8Array|null}|undefined;
     if (!row?.token || !row.iv || !row.tag || !row.model) return null;
@@ -102,13 +110,14 @@ export class Features {
   }
   async chat(email: string, messages: {role:'user'|'assistant';content:string}[], store: CatalogStore, bridge?: Bridge, canQueue=false) {
     const settings = this.credential(email); if (!settings) return null;
+    const outputLimit=this.outputLimit(email);
     const found = new Map();
     const conversation: object[] = [{role:'system',content:systemPrompt + selectionInstructions}, ...messages];
     let totalCalls=0;
     for (let round=0;round<12;round++) {
       const response = await this.transport('https://openrouter.ai/api/v1/chat/completions', {
         method:'POST', signal:AbortSignal.timeout(90000), headers:{Authorization:`Bearer ${settings.token}`,'Content-Type':'application/json'},
-        body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue)}),
+        body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue),...(outputLimit!==null?{max_tokens:outputLimit}:{})}),
       });
       if (!response.ok) throw new Error(`OpenRouter HTTP ${response.status}`);
       let result:{usage?:{completion_tokens?:unknown};choices?:{finish_reason?:unknown;message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};

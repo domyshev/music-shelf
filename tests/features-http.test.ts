@@ -28,6 +28,14 @@ test('new endpoints require sessions and same origin, and keep credentials priva
   assert.equal((await (await fetch(base+`/api/catalog?filters=${tagQuery}`,{headers:{Cookie:one}})).json()).pagination.total,1);
   assert.equal((await (await fetch(base+`/api/catalog?filters=${tagQuery}`,{headers:{Cookie:two}})).json()).pagination.total,0);
   assert.equal((await fetch(base+'/api/ai/settings')).status,401);
+  assert.equal((await fetch(base+'/api/ai/output-limit')).status,401);
+  assert.deepEqual(await (await fetch(base+'/api/ai/output-limit',{headers:{Cookie:one}})).json(),{maxTokens:null});
+  assert.equal((await fetch(base+'/api/ai/output-limit',put(one,'http://evil.invalid',{maxTokens:16384}))).status,403);
+  assert.equal((await fetch(base+'/api/ai/output-limit',put(one,'http://test.invalid',{maxTokens:12345}))).status,400);
+  assert.equal((await fetch(base+'/api/ai/output-limit',put(one,'http://test.invalid',{maxTokens:16384}))).status,200);
+  assert.deepEqual(await (await fetch(base+'/api/ai/output-limit',{headers:{Cookie:two}})).json(),{maxTokens:null});
+  assert.deepEqual(await (await fetch(base+'/api/ai/output-limit',{headers:{Cookie:one}})).json(),{maxTokens:16384});
+  assert.equal((await fetch(base+'/api/ai/output-limit',put(one,'http://test.invalid',{maxTokens:null}))).status,200);
   assert.equal((await fetch(base+'/api/ai/settings',put(one,'http://evil.invalid',{model:'a/b',token:'sensitive'}))).status,403);
   const saved=await fetch(base+'/api/ai/settings',put(one,'http://test.invalid',{model:'a/b',token:'sensitive'}));assert.equal(saved.status,200);assert.equal((await saved.text()).includes('sensitive'),false);
   const other=await (await fetch(base+'/api/ai/settings',{headers:{Cookie:two}})).json();assert.deepEqual(other,{model:'',hasToken:false});

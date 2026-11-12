@@ -120,6 +120,16 @@ export function createApp(options: AppOptions) {
     try {const raw=await options.bridge.execute('set_retry_settings',{auto_stop:parsed.data.enabled,max_attempts:parsed.data.maxAttempts},20000);const result=z.object({auto_stop:z.boolean(),max_attempts:z.number().int().min(1).max(1000000)}).safeParse(raw);if(!result.success)throw new Error();response.json({enabled:result.data.auto_stop,maxAttempts:result.data.max_attempts,canEdit:true});}catch{response.status(503).json({error:'Unable to save download settings'});}
   });
   app.get('/api/ai/settings', authorize, (_request, response) => response.json(options.features?.settings(response.locals.email) ?? {model:'',hasToken:false}));
+  app.get('/api/ai/output-limit', authorize, (_request,response)=>{
+    if(!options.features){response.status(503).json({error:'AI unavailable'});return;}
+    response.json({maxTokens:options.features.outputLimit(response.locals.email)});
+  });
+  app.put('/api/ai/output-limit', authorize, sameOrigin, express.json({limit:'1kb'}), (request,response)=>{
+    const parsed=z.object({maxTokens:z.union([z.null(),z.literal(4096),z.literal(8192),z.literal(16384),z.literal(32768),z.literal(65536)])}).strict().safeParse(request.body);
+    if(!parsed.success){response.status(400).json({error:'Invalid output token limit'});return;}
+    if(!options.features){response.status(503).json({error:'AI unavailable'});return;}
+    options.features.setOutputLimit(response.locals.email,parsed.data.maxTokens);response.json({maxTokens:parsed.data.maxTokens});
+  });
   app.put('/api/ai/settings', authorize, sameOrigin, express.json({limit:'8kb'}), (request,response) => {
     const parsed=z.object({model:z.string().max(200),token:z.string().min(1).max(512).optional(),removeToken:z.boolean().optional()}).strict().safeParse(request.body);
     if (!parsed.success || (parsed.data.token && parsed.data.removeToken)) { response.status(400).json({error:'Invalid settings'}); return; }

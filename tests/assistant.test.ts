@@ -13,6 +13,14 @@ test('empty model response diagnostics only include allowlisted metadata',()=>{
  assert.deepEqual(emptyResponseDiagnostic('private response content','secret',1,0),{finishReason:'unknown',completionTokens:null,round:1,toolCalls:0});
 });
 
+test('output limit persists per user and is sent only when selected',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'shelf-limit-'));const db=join(dir,'db.sqlite'),store=new CatalogStore(db);const bodies:Record<string,unknown>[]=[];
+ const transport:typeof fetch=async(_url,init)=>{bodies.push(JSON.parse(String(init?.body)));return Response.json({choices:[{message:{content:'ok'}}]});};
+ let features=new Features(db,Buffer.alloc(32,3),transport);
+ try{features.saveSettings('one@example.invalid','model','token');features.setOutputLimit('one@example.invalid',16384);features.close();features=new Features(db,Buffer.alloc(32,3),transport);assert.equal(features.outputLimit('one@example.invalid'),16384);assert.equal(features.outputLimit('two@example.invalid'),null);await features.chat('one@example.invalid',[{role:'user',content:'hello'}],store);assert.equal(bodies[0].max_tokens,16384);features.setOutputLimit('one@example.invalid',null);await features.chat('one@example.invalid',[{role:'user',content:'hello'}],store);assert.equal('max_tokens' in bodies[1],false);}
+ finally{features.close();store.close();rmSync(dir,{recursive:true,force:true});}
+});
+
 test('AI tool loop reads actual catalog and reports tool results to the model',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'shelf-assistant-'));const db=join(dir,'db.sqlite');const store=new CatalogStore(db);let calls=0;
  const transport:typeof fetch=async(_url,init)=>{const data=JSON.parse(String(init?.body));calls++;
