@@ -47,12 +47,12 @@ test('quick AI translation uses the account default language',async({page})=>{
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const line=page.locator('.lyrics-markdown p');await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');
  const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await tip.getByRole('button',{name:'Translate selection with AI'}).click();await expect.poll(()=>request).toContain('target language: fr');await expect(tip).toContainText('Merci');
 });
-test('selects the saved output token limit under the assistant input',async({page})=>{
+test('selects the saved output token limit inside the assistant input',async({page})=>{
  await page.getByRole('button',{name:'AI assistant',exact:true}).click();
- const limit=page.getByRole('combobox',{name:'Output tokens'});await expect(limit).toHaveText('Automatic');
- await limit.click();await page.getByRole('option',{name:'16,384'}).click();await expect(limit).toHaveText('16,384');
- await page.reload();await page.getByRole('button',{name:'AI assistant',exact:true}).click();await expect(limit).toHaveText('16,384');
- await limit.click();await page.getByRole('option',{name:'Automatic'}).click();await expect(limit).toHaveText('Automatic');
+ const limit=page.getByRole('combobox',{name:'Output tokens'});await expect(limit).toHaveText('Output tokens: Auto');
+ await limit.click();await page.getByRole('option',{name:'16,384'}).click();await expect(limit).toHaveText('Output tokens: 16,384');
+ await page.reload();await page.getByRole('button',{name:'AI assistant',exact:true}).click();await expect(limit).toHaveText('Output tokens: 16,384');
+ await limit.click();await page.getByRole('option',{name:'Automatic'}).click();await expect(limit).toHaveText('Output tokens: Auto');
 });
 test('shows assistant usage and repeats a question as a new request',async({page})=>{
  let sent='';const turns=[{id:1,requestId:'prior',message:'Find songs',reply:'Here they are',state:'complete',createdAt:'2026-01-01T00:00:00Z',metrics:{inputTokens:100,outputTokens:50,cost:.002,durationMs:2500}}];
