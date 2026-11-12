@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 
-export type ChatTurn = {id:number; requestId:string; message:string; reply:string|null; state:'pending'|'complete'|'failed'; createdAt:string};
+export type ChatMetrics = {inputTokens:number|null;outputTokens:number|null;cost:number|null;durationMs:number};
+export type ChatTurn = {id:number; requestId:string; message:string; reply:string|null; state:'pending'|'complete'|'failed'; createdAt:string; metrics:ChatMetrics|null};
 export class ChatBusy extends Error {}
 export class ChatDuplicate extends Error {}
 
@@ -14,6 +15,8 @@ export class ChatHistory {
       message TEXT NOT NULL, reply TEXT, state TEXT NOT NULL, created_at TEXT NOT NULL,
       UNIQUE(email, request_id));
       CREATE INDEX IF NOT EXISTS ai_chat_turns_email_id ON ai_chat_turns(email, id DESC);`);
+    const columns=this.db.prepare('PRAGMA table_info(ai_chat_turns)').all() as {name:string}[];
+    if(!columns.some(column=>column.name==='metrics'))this.db.exec('ALTER TABLE ai_chat_turns ADD COLUMN metrics TEXT');
   }
   recoverInterrupted() {
     // A process restart cannot safely replay a turn that may have used tools.
@@ -21,14 +24,15 @@ export class ChatHistory {
   }
   close() { this.db.close(); }
   page(email:string,before?:number,limit=50) {
-    const rows = this.db.prepare(`SELECT id,request_id AS requestId,message,reply,state,created_at AS createdAt
-      FROM ai_chat_turns WHERE email=? AND (? IS NULL OR id<?) ORDER BY id DESC LIMIT ?`).all(email,before??null,before??null,limit+1) as ChatTurn[];
+    const rows = this.db.prepare(`SELECT id,request_id AS requestId,message,reply,state,created_at AS createdAt,metrics
+      FROM ai_chat_turns WHERE email=? AND (? IS NULL OR id<?) ORDER BY id DESC LIMIT ?`).all(email,before??null,before??null,limit+1) as (Omit<ChatTurn,'metrics'>&{metrics:string|null})[];
     const hasMore=rows.length>limit;
-    const turns=rows.slice(0,limit).reverse();
+    const turns=rows.slice(0,limit).reverse().map(row=>({...row,metrics:row.metrics?JSON.parse(row.metrics) as ChatMetrics:null}));
     return {turns, nextBefore:hasMore ? turns[0].id : null};
   }
   turn(email:string,requestId:string) {
-    return this.db.prepare('SELECT id,request_id AS requestId,message,reply,state,created_at AS createdAt FROM ai_chat_turns WHERE email=? AND request_id=?').get(email,requestId) as ChatTurn|undefined;
+    const row=this.db.prepare('SELECT id,request_id AS requestId,message,reply,state,created_at AS createdAt,metrics FROM ai_chat_turns WHERE email=? AND request_id=?').get(email,requestId) as (Omit<ChatTurn,'metrics'>&{metrics:string|null})|undefined;
+    return row?{...row,metrics:row.metrics?JSON.parse(row.metrics) as ChatMetrics:null}:undefined;
   }
   begin(email:string,requestId:string,message:string) {
     if(this.active.has(email)) throw new ChatBusy();
@@ -44,8 +48,8 @@ export class ChatHistory {
     const rows=this.db.prepare("SELECT message,reply,state FROM ai_chat_turns WHERE email=? AND (state='complete' OR request_id=?) ORDER BY id DESC LIMIT 15").all(email,requestId) as {message:string;reply:string|null;state:string}[];
     return rows.reverse().flatMap(row=>[{role:'user' as const,content:row.message},...(row.state==='complete'&&row.reply?[{role:'assistant' as const,content:row.reply}]:[])]);
   }
-  complete(email:string,requestId:string,reply:string) {
-    try {this.db.prepare("UPDATE ai_chat_turns SET state='complete',reply=? WHERE email=? AND request_id=? AND state='pending'").run(reply,email,requestId);}
+  complete(email:string,requestId:string,reply:string,metrics?:ChatMetrics) {
+    try {this.db.prepare("UPDATE ai_chat_turns SET state='complete',reply=?,metrics=? WHERE email=? AND request_id=? AND state='pending'").run(reply,metrics?JSON.stringify(metrics):null,email,requestId);}
     finally {this.active.delete(email);}
   }
   fail(email:string,requestId:string) {

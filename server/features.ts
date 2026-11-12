@@ -25,6 +25,7 @@ export class Features {
       CREATE TABLE IF NOT EXISTS song_word_translations (track_id TEXT NOT NULL, email TEXT NOT NULL, source_language TEXT NOT NULL, target_language TEXT NOT NULL, word TEXT NOT NULL, translation TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(track_id,email,source_language,target_language,word));
       CREATE TABLE IF NOT EXISTS ai_settings (email TEXT PRIMARY KEY, model TEXT NOT NULL, token BLOB, iv BLOB, tag BLOB);
       CREATE TABLE IF NOT EXISTS ai_output_limits (email TEXT PRIMARY KEY, max_tokens INTEGER);
+      CREATE TABLE IF NOT EXISTS user_preferences (email TEXT PRIMARY KEY, translation_language TEXT NOT NULL DEFAULT 'ru');
       CREATE TABLE IF NOT EXISTS feature_migrations (name TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS song_translation_variants (id INTEGER PRIMARY KEY, track_id TEXT NOT NULL, email TEXT NOT NULL, source_language TEXT NOT NULL, target_language TEXT NOT NULL, word TEXT NOT NULL, translation TEXT NOT NULL, ai INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS song_translation_lookup ON song_translation_variants(track_id,email,source_language,word);`);
@@ -56,6 +57,10 @@ export class Features {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return null;
     const rows=this.db.prepare('SELECT id, target_language AS targetLanguage, translation, ai FROM song_translation_variants WHERE track_id=? AND email=? AND source_language=? AND word=? ORDER BY target_language,id').all(id,email,sourceLanguage,normalizePhrase(word)) as {id:number;targetLanguage:string;translation:string;ai:number}[];
     return rows.map(row=>({...row,ai:Boolean(row.ai)}));
+  }
+  translatedPhrases(id:string,email:string) {
+    if(!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id))return null;
+    return this.db.prepare('SELECT DISTINCT source_language AS sourceLanguage,word FROM song_translation_variants WHERE track_id=? AND email=? ORDER BY source_language,word').all(id,email) as {sourceLanguage:string;word:string}[];
   }
   saveWordTranslations(id:string,email:string,sourceLanguage:string,targetLanguage:string,entries:{word:string;translation:string}[],ai=false) {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return false;
@@ -96,6 +101,8 @@ export class Features {
   setOutputLimit(email:string,value:number|null) {
     this.db.prepare('INSERT INTO ai_output_limits(email,max_tokens) VALUES(?,?) ON CONFLICT(email) DO UPDATE SET max_tokens=excluded.max_tokens').run(email,value);
   }
+  translationLanguage(email:string) {return (this.db.prepare('SELECT translation_language FROM user_preferences WHERE email=?').get(email) as {translation_language:string}|undefined)?.translation_language??'ru';}
+  setTranslationLanguage(email:string,language:string) {this.db.prepare('INSERT INTO user_preferences(email,translation_language) VALUES(?,?) ON CONFLICT(email) DO UPDATE SET translation_language=excluded.translation_language').run(email,language);}
   private credential(email: string) {
     const row = this.db.prepare('SELECT model,token,iv,tag FROM ai_settings WHERE email=?').get(email) as {model:string;token:Uint8Array|null;iv:Uint8Array|null;tag:Uint8Array|null}|undefined;
     if (!row?.token || !row.iv || !row.tag || !row.model) return null;
@@ -108,7 +115,7 @@ export class Features {
     const body = await response.json() as {data?: {id:string;name:string;pricing?:{prompt?:string;completion?:string};supported_parameters?:string[]}[]};
     return (body.data ?? []).filter(model => typeof model.id === 'string' && typeof model.name === 'string').map(({id,name,pricing,supported_parameters}) => ({id,name,pricing,supportsTools: supported_parameters?.includes('tools') ?? false}));
   }
-  async chat(email: string, messages: {role:'user'|'assistant';content:string}[], store: CatalogStore, bridge?: Bridge, canQueue=false) {
+  async chat(email: string, messages: {role:'user'|'assistant';content:string}[], store: CatalogStore, bridge?: Bridge, canQueue=false, onUsage?:(usage:{prompt_tokens?:unknown;completion_tokens?:unknown;cost?:unknown}|undefined)=>void) {
     const settings = this.credential(email); if (!settings) return null;
     const outputLimit=this.outputLimit(email);
     const found = new Map();
@@ -117,11 +124,12 @@ export class Features {
     for (let round=0;round<12;round++) {
       const response = await this.transport('https://openrouter.ai/api/v1/chat/completions', {
         method:'POST', signal:AbortSignal.timeout(90000), headers:{Authorization:`Bearer ${settings.token}`,'Content-Type':'application/json'},
-        body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue),...(outputLimit!==null?{max_tokens:outputLimit}:{})}),
+        body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue),usage:{include:true},...(outputLimit!==null?{max_tokens:outputLimit}:{})}),
       });
       if (!response.ok) throw new Error(`OpenRouter HTTP ${response.status}`);
-      let result:{usage?:{completion_tokens?:unknown};choices?:{finish_reason?:unknown;message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};
+      let result:{usage?:{prompt_tokens?:unknown;completion_tokens?:unknown;cost?:unknown};choices?:{finish_reason?:unknown;message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};
       try{result=await response.json() as typeof result;}catch{throw new Error('Malformed OpenRouter JSON');}
+      onUsage?.(result.usage);
       const message=result.choices?.[0]?.message; if (!message) throw new Error('OpenRouter returned no message');
       const calls=message.tool_calls;
       if (!calls?.length) {const content=typeof message.content==='string'?message.content:Array.isArray(message.content)?message.content.filter((part):part is {type:string;text:string}=>Boolean(part&&typeof part==='object'&&part.type==='text'&&typeof part.text==='string')).map(part=>part.text).join(''):'';if(!content){console.error('Music Shelf assistant diagnostic:',JSON.stringify(emptyResponseDiagnostic(result.choices?.[0]?.finish_reason,result.usage?.completion_tokens,round+1,totalCalls)));throw new Error('OpenRouter returned no text');}return content;}

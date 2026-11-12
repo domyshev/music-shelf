@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 const tracks = Array.from({ length: 5000 }, (_, index) => ({ id: `fixture-${index}`, title: `Fictional song ${String(index).padStart(4, '0')}`, artist: `Demo Artist ${index % 7}`, album: 'Synthetic album', year: 1960 + index % 10, status: 'pending', file: null }));
 test.beforeEach(async ({ page }) => {
+  let translationLanguage='ru';
+  await page.route('**/api/preferences',route=>{if(route.request().method()==='PUT')translationLanguage=route.request().postDataJSON().translationLanguage;return route.fulfill({json:{translationLanguage}});});
+  await page.route('**/api/tracks/*/phrases',route=>route.fulfill({json:{phrases:[]}}));
   let maxTokens:number|null=null;
   await page.route('**/api/ai/output-limit',route=>{if(route.request().method()==='PUT')maxTokens=route.request().postDataJSON().maxTokens;return route.fulfill({json:{maxTokens}});});
   await page.route('**/api/ai/chat/turn/*', route=>route.fulfill({json:{state:'complete',reply:'Done'}}));
@@ -25,12 +28,39 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('table', { name: 'Songs', exact: true })).toBeVisible();
 });
+test('marks overlapping translated phrases and supports quick AI translation',async({page})=>{
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'> Gracias a la vida\n> Gracias a la vida',ru:'',en:''}}}));
+ await page.route('**/api/tracks/*/phrases',route=>route.fulfill({json:{phrases:[{sourceLanguage:'es',word:'gracias'},{sourceLanguage:'es',word:'gracias a la vida'}]}}));
+ await page.route('**/api/tracks/*/words?*',route=>route.fulfill({json:{translations:[]}}));
+ await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Song details'});const line=dialog.locator('.lyrics-line').first();
+ const spans=line.locator('.translated-phrase');await expect(spans.first()).toBeVisible();
+ expect(await spans.first().evaluate(el=>getComputedStyle(el).backgroundImage.split('gradient').length-1)).toBe(2);
+ await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');
+ const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip.getByRole('button',{name:'Add translation'})).toBeVisible();await expect(tip.getByRole('button',{name:'Translate selection with AI'})).toBeVisible();
+});
+test('quick AI translation uses the account default language',async({page})=>{
+ let request='';let translated=false;
+ await page.route('**/api/preferences',route=>route.fulfill({json:{translationLanguage:'fr'}}));
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'Gracias',ru:'',en:''}}}));
+ await page.route('**/api/tracks/*/words?*',route=>route.fulfill({json:{translations:translated?[{id:1,targetLanguage:'fr',translation:'Merci',ai:true}]:[]}}));
+ await page.route('**/api/ai/chat',route=>{request=route.request().postDataJSON().message;translated=true;return route.fulfill({json:{state:'pending'}});});
+ await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const line=page.locator('.lyrics-markdown p');await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');
+ const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await tip.getByRole('button',{name:'Translate selection with AI'}).click();await expect.poll(()=>request).toContain('target language: fr');await expect(tip).toContainText('Merci');
+});
 test('selects the saved output token limit under the assistant input',async({page})=>{
  await page.getByRole('button',{name:'AI assistant',exact:true}).click();
  const limit=page.getByRole('combobox',{name:'Output tokens'});await expect(limit).toHaveText('Automatic');
  await limit.click();await page.getByRole('option',{name:'16,384'}).click();await expect(limit).toHaveText('16,384');
  await page.reload();await page.getByRole('button',{name:'AI assistant',exact:true}).click();await expect(limit).toHaveText('16,384');
  await limit.click();await page.getByRole('option',{name:'Automatic'}).click();await expect(limit).toHaveText('Automatic');
+});
+test('shows assistant usage and repeats a question as a new request',async({page})=>{
+ let sent='';const turns=[{id:1,requestId:'prior',message:'Find songs',reply:'Here they are',state:'complete',createdAt:'2026-01-01T00:00:00Z',metrics:{inputTokens:100,outputTokens:50,cost:.002,durationMs:2500}}];
+ await page.route('**/api/ai/chat/history*',route=>route.fulfill({json:{turns,nextBefore:null}}));
+ await page.route('**/api/ai/settings',route=>route.fulfill({json:{model:'demo/model',hasToken:true}}));
+ await page.route('**/api/ai/chat',route=>{sent=route.request().postDataJSON().message;return route.fulfill({json:{state:'pending'}});});
+ await page.getByRole('button',{name:'AI assistant',exact:true}).click();await expect(page.getByText('150 tokens · $0.002000 · 2.5 s')).toBeVisible();
+ await page.getByRole('button',{name:'Repeat request'}).click();await expect.poll(()=>sent).toBe('Find songs');
 });
 test('reorders lyric tabs by dragging and remembers order for other songs',async({page})=>{
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'en',texts:{en:'English text',ru:'Russian text',es:'Spanish text',fr:'French text'}}}));

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Switch, TextField, Typography } from '@mui/material';
+import { TranslationPreference } from './TranslationPreference';
 
 type Settings={enabled:boolean;maxAttempts:number;canEdit:boolean};
 export function DownloadSettings({open,onClose}:{open:boolean;onClose:()=>void}) {
@@ -11,6 +12,6 @@ export function DownloadSettings({open,onClose}:{open:boolean;onClose:()=>void})
   return <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs" aria-labelledby="download-settings-title"><DialogTitle id="download-settings-title">Settings</DialogTitle><DialogContent>
     <Typography variant="subtitle1" sx={{fontWeight:600,mb:1}}>Downloads</Typography>
     {busy&&!settings?<CircularProgress size={20} aria-label="Loading settings"/>:settings&&<Box sx={{display:'flex',flexDirection:'column',gap:1}}><FormControlLabel control={<Switch checked={enabled} disabled={!settings.canEdit||busy} onChange={event=>{setEnabled(event.target.checked);setSaved(false);}}/>} label="Automatically stop retrying"/><TextField type="number" label="Attempt limit" value={limit} disabled={!enabled||!settings.canEdit||busy} error={!valid} onChange={event=>{setLimit(event.target.value);setSaved(false);}} slotProps={{htmlInput:{min:1,max:1000000,step:1}}} helperText="A song stops after its attempts exceed this limit; other songs continue."/><Typography variant="caption" color="text.secondary">Changing or disabling the limit resumes songs stopped by this setting when eligible.</Typography>{!settings.canEdit&&<Alert severity="info">Only the owner can change download settings.</Alert>}</Box>}
-    {error&&<Alert severity="error" sx={{mt:1}}>{error}</Alert>}{saved&&<Typography color="success.main" variant="caption">Saved</Typography>}
+    <TranslationPreference open={open}/>{error&&<Alert severity="error" sx={{mt:1}}>{error}</Alert>}{saved&&<Typography color="success.main" variant="caption">Saved</Typography>}
   </DialogContent><DialogActions><Button onClick={onClose}>Close</Button><Button variant="contained" disabled={!settings?.canEdit||busy||!valid||!dirty} onClick={()=>void save()}>Save</Button></DialogActions></Dialog>;
 }

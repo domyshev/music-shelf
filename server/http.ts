@@ -85,6 +85,7 @@ export function createApp(options: AppOptions) {
     if(!translations){response.status(404).json({error:'Song not found'});return;}
     response.json({translations});
   });
+  app.get('/api/tracks/:id/phrases',authorize,(request,response)=>{const phrases=options.features?.translatedPhrases(String(request.params.id),response.locals.email);if(!phrases){response.status(404).json({error:'Song not found'});return;}response.json({phrases});});
   app.put('/api/tracks/:id/words', authorize, sameOrigin, express.json({limit:'4kb'}), (request,response) => {
     const parsed=z.object({word:translationPhrase,sourceLanguage:z.string().regex(/^[a-z]{2,3}$/),targetLanguage:z.string().regex(/^[a-z]{2,3}$/),translation:z.string().trim().min(1).max(500)}).strict().safeParse(request.body);
     if(!parsed.success){response.status(400).json({error:'Invalid translation'});return;}
@@ -113,6 +114,8 @@ export function createApp(options: AppOptions) {
     if(!options.bridge){response.status(503).json({error:'Download service unavailable'});return;}
     try {const raw=await options.bridge.execute('retry_settings',{},20000);const result=z.object({auto_stop:z.boolean(),max_attempts:z.number().int().min(1).max(1000000)}).safeParse(raw);if(!result.success)throw new Error();response.json({enabled:result.data.auto_stop,maxAttempts:result.data.max_attempts,canEdit:options.queueUsers?.includes(response.locals.email)??false});}catch{response.status(503).json({error:'Unable to load download settings'});}
   });
+  app.get('/api/preferences',authorize,(_request,response)=>{if(!options.features){response.status(503).json({error:'Settings unavailable'});return;}response.json({translationLanguage:options.features.translationLanguage(response.locals.email)});});
+  app.put('/api/preferences',authorize,sameOrigin,express.json({limit:'1kb'}),(request,response)=>{const parsed=z.object({translationLanguage:z.string().regex(/^(?!und$)[a-z]{2,3}$/)}).strict().safeParse(request.body);if(!parsed.success){response.status(400).json({error:'Invalid language'});return;}if(!options.features){response.status(503).json({error:'Settings unavailable'});return;}options.features.setTranslationLanguage(response.locals.email,parsed.data.translationLanguage);response.json(parsed.data);});
   app.put('/api/download/settings', authorize, sameOrigin, express.json({limit:'2kb'}), async (request,response) => {
     if(!options.queueUsers?.includes(response.locals.email)){response.status(403).json({error:'Only the owner can change download settings'});return;}
     const parsed=z.object({enabled:z.boolean(),maxAttempts:z.number().int().min(1).max(1000000)}).strict().safeParse(request.body);if(!parsed.success){response.status(400).json({error:'Invalid download settings'});return;}
@@ -164,10 +167,11 @@ export function createApp(options: AppOptions) {
     }
     const features=options.features,history=options.chatHistory;
     void (async()=>{
+      const started=Date.now();let inputTokens=0,outputTokens=0,cost=0,hasUsage=false,completeTokens=true,completeCost=true;
       try {
-        const reply=await features.chat(email,history.context(email,requestId),options.store,options.bridge,options.queueUsers?.includes(email) ?? false);
+        const reply=await features.chat(email,history.context(email,requestId),options.store,options.bridge,options.queueUsers?.includes(email) ?? false,usage=>{hasUsage=true;const valid=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>=0;if(valid(usage?.prompt_tokens)&&valid(usage?.completion_tokens)){inputTokens+=usage.prompt_tokens;outputTokens+=usage.completion_tokens;}else completeTokens=false;if(valid(usage?.cost))cost+=usage.cost;else completeCost=false;});
         if(reply===null)throw new Error('AI settings unavailable');
-        history.complete(email,requestId,reply);
+        history.complete(email,requestId,reply,{inputTokens:hasUsage&&completeTokens?inputTokens:null,outputTokens:hasUsage&&completeTokens?outputTokens:null,cost:hasUsage&&completeCost?cost:null,durationMs:Date.now()-started});
       } catch(error) {
         const known=['Tool request limit reached','Too many tool calls','Invalid tool calls','OpenRouter returned no message','OpenRouter returned no text','Malformed OpenRouter JSON'];const reason=error instanceof Error && (/^OpenRouter HTTP \d{3}$/.test(error.message)||known.includes(error.message))?error.message:error instanceof Error && (error.name==='TimeoutError'||error.name==='AbortError')?'OpenRouter request timed out':error instanceof TypeError?'OpenRouter network or response error':'AI request failed';
         console.error(`Music Shelf assistant: ${reason}`);
