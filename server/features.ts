@@ -108,7 +108,7 @@ export class Features {
     for (let round=0;round<12;round++) {
       const response = await this.transport('https://openrouter.ai/api/v1/chat/completions', {
         method:'POST', signal:AbortSignal.timeout(90000), headers:{Authorization:`Bearer ${settings.token}`,'Content-Type':'application/json'},
-        body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue),max_tokens:16384}),
+        body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue)}),
       });
       if (!response.ok) throw new Error(`OpenRouter HTTP ${response.status}`);
       let result:{usage?:{completion_tokens?:unknown};choices?:{finish_reason?:unknown;message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};
