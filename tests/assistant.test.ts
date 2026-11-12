@@ -4,9 +4,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CatalogStore } from '../server/store.js';
-import { Features } from '../server/features.js';
+import { Features, emptyResponseDiagnostic } from '../server/features.js';
 import { runTool, tools } from '../server/assistant.js';
 import { Bridge } from '../server/bridge.js';
+
+test('empty model response diagnostics only include allowlisted metadata',()=>{
+ assert.deepEqual(emptyResponseDiagnostic('length',4096,3,2),{finishReason:'length',completionTokens:4096,round:3,toolCalls:2});
+ assert.deepEqual(emptyResponseDiagnostic('private response content','secret',1,0),{finishReason:'unknown',completionTokens:null,round:1,toolCalls:0});
+});
 
 test('AI tool loop reads actual catalog and reports tool results to the model',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'shelf-assistant-'));const db=join(dir,'db.sqlite');const store=new CatalogStore(db);let calls=0;

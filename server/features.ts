@@ -6,6 +6,11 @@ import type { Bridge } from './bridge.js';
 import { normalizePhrase } from './translation-phrase.js';
 import { Tags } from './tags.js';
 
+export function emptyResponseDiagnostic(reason:unknown, completionTokens:unknown, round:number, toolCalls:number) {
+  const allowed=['stop','length','content_filter','tool_calls','error','cancelled'];
+  return {finishReason:typeof reason==='string'&&allowed.includes(reason)?reason:'unknown',completionTokens:typeof completionTokens==='number'&&Number.isSafeInteger(completionTokens)&&completionTokens>=0?completionTokens:null,round,toolCalls};
+}
+
 export class Features {
   private db: DatabaseSync;
   private key: Buffer;
@@ -106,11 +111,11 @@ export class Features {
         body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue),max_tokens:4096}),
       });
       if (!response.ok) throw new Error(`OpenRouter HTTP ${response.status}`);
-      let result:{choices?:{message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};
+      let result:{usage?:{completion_tokens?:unknown};choices?:{finish_reason?:unknown;message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};
       try{result=await response.json() as typeof result;}catch{throw new Error('Malformed OpenRouter JSON');}
       const message=result.choices?.[0]?.message; if (!message) throw new Error('OpenRouter returned no message');
       const calls=message.tool_calls;
-      if (!calls?.length) {const content=typeof message.content==='string'?message.content:Array.isArray(message.content)?message.content.filter((part):part is {type:string;text:string}=>Boolean(part&&typeof part==='object'&&part.type==='text'&&typeof part.text==='string')).map(part=>part.text).join(''):'';if(!content)throw new Error('OpenRouter returned no text');return content;}
+      if (!calls?.length) {const content=typeof message.content==='string'?message.content:Array.isArray(message.content)?message.content.filter((part):part is {type:string;text:string}=>Boolean(part&&typeof part==='object'&&part.type==='text'&&typeof part.text==='string')).map(part=>part.text).join(''):'';if(!content){console.error('Music Shelf assistant diagnostic:',JSON.stringify(emptyResponseDiagnostic(result.choices?.[0]?.finish_reason,result.usage?.completion_tokens,round+1,totalCalls)));throw new Error('OpenRouter returned no text');}return content;}
       if(!Array.isArray(calls)||calls.some(call=>!call||!call.id||call.type!=='function'||!call.function||typeof call.function.name!=='string'||typeof call.function.arguments!=='string'))throw new Error('Invalid tool calls');
       totalCalls+=calls.length;if(calls.length>40||totalCalls>100)throw new Error('Too many tool calls');
       conversation.push({role:'assistant',content:typeof message.content==='string'?message.content:null,tool_calls:calls});
