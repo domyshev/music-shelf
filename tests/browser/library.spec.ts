@@ -32,6 +32,22 @@ test('selects the saved output token limit under the assistant input',async({pag
  await page.reload();await page.getByRole('button',{name:'AI assistant',exact:true}).click();await expect(limit).toHaveText('16,384');
  await limit.click();await page.getByRole('option',{name:'Automatic'}).click();await expect(limit).toHaveText('Automatic');
 });
+test('reorders lyric tabs by dragging and remembers order for other songs',async({page})=>{
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'en',texts:{en:'English text',ru:'Russian text',es:'Spanish text',fr:'French text'}}}));
+ await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();
+ let dialog=page.getByRole('dialog',{name:'Song details'});const tablist=dialog.getByRole('tablist',{name:'Lyrics languages'});
+ await expect(tablist.getByRole('tab')).toHaveText(['ru','es','en','fr']);
+ const from=await tablist.getByRole('tab',{name:'en'}).boundingBox(),to=await tablist.getByRole('tab',{name:'ru'}).boundingBox();
+ if(!from||!to)throw new Error('Language tabs not found');
+ await page.mouse.move(from.x+from.width/2,from.y+from.height/2);await page.mouse.down();await page.mouse.move(to.x+to.width/2,to.y+to.height/2,{steps:8});await page.mouse.up();
+ await expect(tablist.getByRole('tab')).toHaveText(['en','ru','es','fr']);
+ await expect(tablist.getByRole('tab',{name:'en'})).toHaveAttribute('aria-selected','false');
+ await expect(dialog.locator('.lyrics-column').first()).toHaveAttribute('data-language','ru');
+ await dialog.getByRole('button',{name:'Close details'}).click();await page.getByRole('button',{name:'Fictional song 0001',exact:true}).click();
+ dialog=page.getByRole('dialog',{name:'Song details'});await expect(dialog.getByRole('tablist',{name:'Lyrics languages'}).getByRole('tab')).toHaveText(['en','ru','es','fr']);
+ await expect(dialog.getByRole('tab',{name:'en'})).toHaveAttribute('aria-selected','true');await expect(dialog.locator('.lyrics-column').first()).toHaveAttribute('data-language','en');
+ await page.reload();await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();await expect(page.getByRole('dialog',{name:'Song details'}).getByRole('tablist',{name:'Lyrics languages'}).getByRole('tab')).toHaveText(['en','ru','es','fr']);
+});
 test('virtualizes a large library, scrolls the table only, searches, sorts and retains login', async ({ page }) => {
   await page.getByRole('combobox').click();
   await page.getByRole('option', { name: '250', exact: true }).click();

@@ -40,6 +40,7 @@ html,body,#root{height:100%;width:100%;margin:0;overflow:hidden}body{overscroll-
 .lyrics-scroll{scrollbar-width:none}.lyrics-scroll::-webkit-scrollbar{display:none}
 
 .lyrics-tab.MuiButtonBase-root{gap:4px}.lyrics-tab .MuiSvgIcon-root{font-size:15px}.lyrics-scroll{border-left:0;border-right:0;border-radius:0;overscroll-behavior:none}.lyrics-scroll::-webkit-scrollbar{width:0;height:0;display:none}.lyrics-column-wrapper:first-child .lyrics-markdown,.lyrics-column-wrapper:first-child .lyrics-mirror,.lyrics-column-wrapper:first-child .lyrics-editor{padding-left:0}.lyrics-column-wrapper:last-child .lyrics-markdown,.lyrics-column-wrapper:last-child .lyrics-mirror,.lyrics-column-wrapper:last-child .lyrics-editor{padding-right:0}.word-translation-tip{position:relative;padding:7px 10px;font-size:13px;max-width:300px}.word-translation-tip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--mui-palette-background-paper)}
+.lyrics-tab.MuiButtonBase-root{cursor:grab;touch-action:pan-y}.lyrics-tab.MuiButtonBase-root:active{cursor:grabbing}
 
 .word-translation-tip{width:min(370px,calc(100vw - 40px));max-width:none}
 
