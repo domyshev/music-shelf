@@ -32,8 +32,8 @@ test.beforeEach(async ({ page }) => {
 test('shows account, theme, settings and version in the application menu',async({page})=>{
  await page.getByRole('button',{name:'Open menu'}).click();
  const menu=page.getByRole('menu');await expect(menu.getByText('Theme:')).toBeVisible();await expect(menu.getByText('test@example.invalid')).toBeVisible();
- await expect(menu.getByText('0.2.37')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
- await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.37');
+ await expect(menu.getByText('0.2.38')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
+ await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.38');
 });
 test('marks overlapping translated phrases and supports quick AI translation',async({page})=>{
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'> Gracias a la vida\n> Gracias a la vida',ru:'',en:''}}}));
@@ -44,6 +44,14 @@ test('marks overlapping translated phrases and supports quick AI translation',as
  expect(await spans.first().evaluate(el=>getComputedStyle(el,'::after').backgroundImage.split('gradient').length-1)).toBe(2);
  await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');
  const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip.getByRole('button',{name:'Add translation'})).toBeVisible();await expect(tip.getByRole('button',{name:'Translate selection with AI'})).toBeVisible();
+});
+test('hover shows the shortest matching translated phrase without selecting text',async({page})=>{
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'> su fondo estrellado',ru:'',en:''}}}));
+ await page.route('**/api/tracks/*/phrases',route=>route.fulfill({json:{phrases:[{sourceLanguage:'es',word:'su fondo estrellado'},{sourceLanguage:'es',word:'fondo'}]}}));
+ await page.route('**/api/tracks/*/words?*',route=>{const word=new URL(route.request().url()).searchParams.get('word');return route.fulfill({json:{translations:[{id:1,targetLanguage:'ru',translation:word==='fondo'?'фон':'его звёздный фон',ai:false}]}});});
+ let aiRequests=0;await page.route('**/api/ai/translations',route=>{aiRequests++;return route.fulfill({status:500});});
+ await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const lyrics=page.locator('.lyrics-markdown');const short=lyrics.locator('[data-translation-phrase="fondo"]');await short.hover();await expect(page.getByRole('tooltip')).toContainText('фон');await expect(page.getByRole('tooltip')).not.toContainText('его звёздный фон');
+ const long=lyrics.locator('[data-translation-phrase="su fondo estrellado"]').first();await long.hover();await expect(page.getByRole('tooltip')).toContainText('его звёздный фон');await page.getByRole('button',{name:'Close details'}).hover();await expect(page.getByRole('tooltip').filter({hasText:'его звёздный фон'})).toHaveCount(0);expect(aiRequests).toBe(0);
 });
 test('quick AI translation uses the account default language',async({page})=>{
  let request='';let translated=false;

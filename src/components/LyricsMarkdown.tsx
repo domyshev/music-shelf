@@ -1,4 +1,4 @@
-import { Children, cloneElement, createContext, isValidElement, useContext, useState, type ReactElement, type ReactNode } from 'react';
+import { Children, cloneElement, createContext, isValidElement, memo, useContext, useState, type ReactElement, type ReactNode } from 'react';
 import { Tooltip } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -25,7 +25,7 @@ function splitLines(children:ReactNode):ReactNode[][] {
 function LyricsLine({children}:{children:ReactNode}) {
   const [tip,setTip]=useState('');
   return <Tooltip title={tip} arrow placement="top" disableInteractive>
-    <span className="lyrics-line" onMouseEnter={event=>{const line=event.currentTarget;setTip(line.scrollWidth>line.clientWidth?line.textContent??'':'');}} onMouseLeave={()=>setTip('')}>{children}</span>
+    <span className="lyrics-line" onMouseEnter={event=>{const line=event.currentTarget;setTip(line.scrollWidth>line.clientWidth?line.textContent??'':'');}} onMouseMove={event=>{const line=event.currentTarget;setTip((event.target as HTMLElement).closest('.translated-phrase')?'':line.scrollWidth>line.clientWidth?line.textContent??'':'');}} onMouseLeave={()=>setTip('')}>{children}</span>
   </Tooltip>;
 }
 
@@ -35,16 +35,16 @@ function LyricsParagraph({children}:{children?:ReactNode}) {
 }
 
 const underlineColors=['#7650a6','#376c9e','#b04e73','#5861ad','#9a579f','#396f88','#ad4f58','#5e67a2'];
-type Match={start:number;end:number;level:number;color:string};
+type Match={start:number;end:number;level:number;color:string;word:string};
 function findTranslations(text:string,phrases:string[]):Match[] {
-  const found:{start:number;end:number;level:number;color:string}[]=[];
+  const found:Match[]=[];
   for(const [index,phrase] of [...new Set(phrases)].sort().entries()) {
     const pattern=phrase.trim().split(/\s+/u).map(part=>part.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('\\s+');if(!pattern)continue;
     const re=new RegExp(pattern,'giu');for(const match of text.matchAll(re)){
       const start=match.index,end=start+match[0].length;const before=text[start-1],after=text[end];
       if(before&&/[\p{L}\p{N}]/u.test(before)&&/[\p{L}\p{N}]/u.test(match[0][0]))continue;
       if(after&&/[\p{L}\p{N}]/u.test(after)&&/[\p{L}\p{N}]/u.test(match[0].at(-1)!))continue;
-      found.push({start,end,level:0,color:underlineColors[index%underlineColors.length]});
+      found.push({start,end,level:0,color:underlineColors[index%underlineColors.length],word:match[0]});
     }
   }
   found.sort((a,b)=>a.start-b.start||b.end-a.end);
@@ -58,7 +58,7 @@ function translatedText(text:string,found:Match[],offset:number):RootContent[] {
   for(let i=0;i<edges.length-1;i++){const start=edges[i],end=edges[i+1],value=text.slice(start,end),active=relevant.filter(item=>item.start<=start+offset&&item.end>=end+offset);if(!active.length){result.push({type:'text',value} as Text);continue;}
     const images=active.map(item=>`repeating-linear-gradient(to right,${item.color} 0 2px,transparent 2px 4px)`).join(',');
     const positions=active.map(item=>`left ${item.level*3}px`).join(',');
-    result.push({type:'element',tagName:'span',properties:{className:['translated-phrase'],style:`--translation-lines:${images};--translation-line-size:${active.map(()=>'100% 1px').join(',')};--translation-line-position:${positions};--translation-line-height:${Math.max(...active.map(item=>item.level))*3+1}px`},children:[{type:'text',value}]} as Element);
+    result.push({type:'element',tagName:'span',properties:{className:['translated-phrase'],'data-translation-phrase':active.reduce((shortest,item)=>item.end-item.start<shortest.end-shortest.start?item:shortest).word,style:`--translation-lines:${images};--translation-line-size:${active.map(()=>'100% 1px').join(',')};--translation-line-position:${positions};--translation-line-height:${Math.max(...active.map(item=>item.level))*3+1}px`},children:[{type:'text',value}]} as Element);
   }
   return result;
 }
@@ -71,6 +71,6 @@ function markTranslations(phrases:string[]) {return (root:Root)=>{
   function visit(node:Root|Element){for(const child of node.children)if(child.type==='element'){if(child.tagName==='p')markParagraph(child);else visit(child);}}visit(root);
 };}
 
-export function LyricsMarkdown({text,phrases=[]}:{text:string;phrases?:string[]}) {
+export const LyricsMarkdown=memo(function LyricsMarkdown({text,phrases=[]}:{text:string;phrases?:string[]}) {
   return <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[()=>markTranslations(phrases)]} components={{blockquote:({children})=><blockquote><InLyricsBlock.Provider value>{children}</InLyricsBlock.Provider></blockquote>,p:({children})=><LyricsParagraph>{children}</LyricsParagraph>}}>{text}</ReactMarkdown>;
-}
+},(previous,next)=>previous.text===next.text&&JSON.stringify(previous.phrases??[])===JSON.stringify(next.phrases??[]));
