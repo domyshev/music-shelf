@@ -48,3 +48,5 @@ html,body,#root{height:100%;width:100%;margin:0;overflow:hidden}body{overscroll-
 .song-metadata{overflow-y:auto;overflow-x:hidden;min-height:0;overscroll-behavior:contain}.lyrics-tabs{flex:0 1 auto}.lyrics-column-divider{flex:0 0 8px;cursor:col-resize;touch-action:none;margin:0 -4px;z-index:1;position:relative}.lyrics-column-divider::after{content:'';position:absolute;top:0;bottom:0;left:3px;border-left:1px solid var(--mui-palette-divider)}.lyrics-column+.lyrics-column{border-left:0}.lyrics-scroll{border-bottom:0}
 
 .lyrics-markdown blockquote:nth-of-type(even){background:color-mix(in srgb,var(--lyrics-block-color) 20%,var(--mui-palette-background-paper))}
+
+.translated-phrase{position:relative}.translated-phrase::after{content:"";position:absolute;left:0;right:0;top:calc(100% - 1px);height:var(--translation-line-height);background-image:var(--translation-lines);background-size:var(--translation-line-size);background-position:var(--translation-line-position);background-repeat:no-repeat;pointer-events:none}

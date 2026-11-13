@@ -31,8 +31,8 @@ test.beforeEach(async ({ page }) => {
 test('shows account, theme, settings and version in the application menu',async({page})=>{
  await page.getByRole('button',{name:'Open menu'}).click();
  const menu=page.getByRole('menu');await expect(menu.getByText('Theme:')).toBeVisible();await expect(menu.getByText('test@example.invalid')).toBeVisible();
- await expect(menu.getByText('0.2.33')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
- await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.33');
+ await expect(menu.getByText('0.2.34')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
+ await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.34');
 });
 test('marks overlapping translated phrases and supports quick AI translation',async({page})=>{
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'> Gracias a la vida\n> Gracias a la vida',ru:'',en:''}}}));
@@ -40,7 +40,7 @@ test('marks overlapping translated phrases and supports quick AI translation',as
  await page.route('**/api/tracks/*/words?*',route=>route.fulfill({json:{translations:[]}}));
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Song details'});const line=dialog.locator('.lyrics-line').first();
  const spans=line.locator('.translated-phrase');await expect(spans.first()).toBeVisible();
- expect(await spans.first().evaluate(el=>getComputedStyle(el).backgroundImage.split('gradient').length-1)).toBe(2);
+ expect(await spans.first().evaluate(el=>getComputedStyle(el,'::after').backgroundImage.split('gradient').length-1)).toBe(2);
  await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');
  const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip.getByRole('button',{name:'Add translation'})).toBeVisible();await expect(tip.getByRole('button',{name:'Translate selection with AI'})).toBeVisible();
 });

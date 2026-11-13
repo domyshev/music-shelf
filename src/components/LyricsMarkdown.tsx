@@ -34,7 +34,7 @@ function LyricsParagraph({children}:{children?:ReactNode}) {
   return <p>{inBlock?splitLines(children).map((line,index)=><LyricsLine key={index}>{line.length?line:'\u00a0'}</LyricsLine>):children}</p>;
 }
 
-const underlineColors=['#c08164','#6f9e83','#a888b1','#be9d55','#709da9','#bd809a','#8a9a66','#a68473'];
+const underlineColors=['#7650a6','#376c9e','#b04e73','#5861ad','#9a579f','#396f88','#ad4f58','#5e67a2'];
 type Match={start:number;end:number;level:number;color:string};
 function findTranslations(text:string,phrases:string[]):Match[] {
   const found:{start:number;end:number;level:number;color:string}[]=[];
@@ -57,8 +57,8 @@ function translatedText(text:string,found:Match[],offset:number):RootContent[] {
   const edges=[...new Set([0,text.length,...relevant.flatMap(item=>[Math.max(0,item.start-offset),Math.min(text.length,item.end-offset)])])].sort((a,b)=>a-b);const result:RootContent[]=[];
   for(let i=0;i<edges.length-1;i++){const start=edges[i],end=edges[i+1],value=text.slice(start,end),active=relevant.filter(item=>item.start<=start+offset&&item.end>=end+offset);if(!active.length){result.push({type:'text',value} as Text);continue;}
     const images=active.map(item=>`repeating-linear-gradient(to right,${item.color} 0 2px,transparent 2px 4px)`).join(',');
-    const positions=active.map(item=>`left calc(100% - ${item.level*3}px)`).join(',');
-    result.push({type:'element',tagName:'span',properties:{className:['translated-phrase'],style:`background-image:${images};background-size:${active.map(()=>'100% 1px').join(',')};background-position:${positions};background-repeat:no-repeat`},children:[{type:'text',value}]} as Element);
+    const positions=active.map(item=>`left ${item.level*3}px`).join(',');
+    result.push({type:'element',tagName:'span',properties:{className:['translated-phrase'],style:`--translation-lines:${images};--translation-line-size:${active.map(()=>'100% 1px').join(',')};--translation-line-position:${positions};--translation-line-height:${Math.max(...active.map(item=>item.level))*3+1}px`},children:[{type:'text',value}]} as Element);
   }
   return result;
 }
