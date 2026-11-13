@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 const tracks = Array.from({ length: 5000 }, (_, index) => ({ id: `fixture-${index}`, title: `Fictional song ${String(index).padStart(4, '0')}`, artist: `Demo Artist ${index % 7}`, album: 'Synthetic album', year: 1960 + index % 10, status: 'pending', file: null }));
 test.beforeEach(async ({ page }) => {
-  let translationLanguage='ru';
-  await page.route('**/api/preferences',route=>{if(route.request().method()==='PUT')translationLanguage=route.request().postDataJSON().translationLanguage;return route.fulfill({json:{translationLanguage}});});
+  let translationLanguage='ru';let autoTranslate=false;
+  await page.route('**/api/preferences',route=>{if(route.request().method()==='PUT'){const data=route.request().postDataJSON();translationLanguage=data.translationLanguage??translationLanguage;autoTranslate=data.autoTranslate??autoTranslate;}return route.fulfill({json:{translationLanguage,autoTranslate}});});
   await page.route('**/api/tracks/*/phrases',route=>route.fulfill({json:{phrases:[]}}));
   let maxTokens:number|null=null;
   await page.route('**/api/ai/output-limit',route=>{if(route.request().method()==='PUT')maxTokens=route.request().postDataJSON().maxTokens;return route.fulfill({json:{maxTokens}});});
@@ -31,8 +31,8 @@ test.beforeEach(async ({ page }) => {
 test('shows account, theme, settings and version in the application menu',async({page})=>{
  await page.getByRole('button',{name:'Open menu'}).click();
  const menu=page.getByRole('menu');await expect(menu.getByText('Theme:')).toBeVisible();await expect(menu.getByText('test@example.invalid')).toBeVisible();
- await expect(menu.getByText('0.2.34')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
- await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.34');
+ await expect(menu.getByText('0.2.35')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
+ await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.35');
 });
 test('marks overlapping translated phrases and supports quick AI translation',async({page})=>{
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'> Gracias a la vida\n> Gracias a la vida',ru:'',en:''}}}));
@@ -46,12 +46,23 @@ test('marks overlapping translated phrases and supports quick AI translation',as
 });
 test('quick AI translation uses the account default language',async({page})=>{
  let request='';let translated=false;
- await page.route('**/api/preferences',route=>route.fulfill({json:{translationLanguage:'fr'}}));
+ await page.route('**/api/preferences',route=>route.fulfill({json:{translationLanguage:'fr',autoTranslate:false}}));
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'Gracias',ru:'',en:''}}}));
  await page.route('**/api/tracks/*/words?*',route=>route.fulfill({json:{translations:translated?[{id:1,targetLanguage:'fr',translation:'Merci',ai:true}]:[]}}));
  await page.route('**/api/ai/chat',route=>{request=route.request().postDataJSON().message;translated=true;return route.fulfill({json:{state:'pending'}});});
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const line=page.locator('.lyrics-markdown p');await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');
  const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await tip.getByRole('button',{name:'Translate selection with AI'}).click();await expect.poll(()=>request).toContain('target language: fr');await expect(tip).toContainText('Merci');
+});
+test('automatically translates a missing phrase and shows progress in place',async({page})=>{
+ let sent=0,translated=false;let finish!:()=>void;const waiting=new Promise<void>(resolve=>finish=resolve);
+ await page.route('**/api/preferences',route=>route.fulfill({json:{translationLanguage:'ru',autoTranslate:true}}));
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'Blanco',ru:'',en:''}}}));
+ await page.route('**/api/tracks/*/words?*',route=>route.fulfill({json:{translations:translated?[{id:1,targetLanguage:'ru',translation:'белый',ai:true}]:[]}}));
+ await page.route('**/api/ai/chat',async route=>{sent++;await waiting;translated=true;await route.fulfill({json:{state:'pending'}});});
+ await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const line=page.locator('.lyrics-markdown p');await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');
+ const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip).toContainText('Translating with AI');await expect(tip.getByRole('status',{name:'Translating'})).toBeVisible();await expect(tip).not.toContainText('No saved translation');await expect(tip.getByRole('button',{name:'Add translation'})).toHaveCount(0);expect(sent).toBe(1);
+ finish();await expect(tip).toContainText('белый');await expect(tip.getByText('AI',{exact:true})).toBeVisible();
+ await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');await expect(tip).toContainText('белый');expect(sent).toBe(1);
 });
 test('selects the saved output token limit inside the assistant input',async({page})=>{
  await page.getByRole('button',{name:'AI assistant',exact:true}).click();

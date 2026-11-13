@@ -29,10 +29,12 @@ test('new endpoints require sessions and same origin, and keep credentials priva
   assert.equal((await (await fetch(base+`/api/catalog?filters=${tagQuery}`,{headers:{Cookie:two}})).json()).pagination.total,0);
   assert.equal((await fetch(base+'/api/ai/settings')).status,401);
   assert.equal((await fetch(base+'/api/preferences')).status,401);
-  assert.deepEqual(await (await fetch(base+'/api/preferences',{headers:{Cookie:one}})).json(),{translationLanguage:'ru'});
+  assert.deepEqual(await (await fetch(base+'/api/preferences',{headers:{Cookie:one}})).json(),{translationLanguage:'ru',autoTranslate:true});
   assert.equal((await fetch(base+'/api/preferences',put(one,'http://evil.invalid',{translationLanguage:'es'}))).status,403);
   assert.equal((await fetch(base+'/api/preferences',put(one,'http://test.invalid',{translationLanguage:'es'}))).status,200);
-  assert.deepEqual(await (await fetch(base+'/api/preferences',{headers:{Cookie:two}})).json(),{translationLanguage:'ru'});
+  assert.equal((await fetch(base+'/api/preferences',put(one,'http://test.invalid',{autoTranslate:false}))).status,200);
+  assert.deepEqual(await (await fetch(base+'/api/preferences',{headers:{Cookie:one}})).json(),{translationLanguage:'es',autoTranslate:false});
+  assert.deepEqual(await (await fetch(base+'/api/preferences',{headers:{Cookie:two}})).json(),{translationLanguage:'ru',autoTranslate:true});
   assert.equal((await fetch(base+'/api/ai/output-limit')).status,401);
   assert.deepEqual(await (await fetch(base+'/api/ai/output-limit',{headers:{Cookie:one}})).json(),{maxTokens:null});
   assert.equal((await fetch(base+'/api/ai/output-limit',put(one,'http://evil.invalid',{maxTokens:16384}))).status,403);

@@ -29,6 +29,7 @@ export class Features {
       CREATE TABLE IF NOT EXISTS feature_migrations (name TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS song_translation_variants (id INTEGER PRIMARY KEY, track_id TEXT NOT NULL, email TEXT NOT NULL, source_language TEXT NOT NULL, target_language TEXT NOT NULL, word TEXT NOT NULL, translation TEXT NOT NULL, ai INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS song_translation_lookup ON song_translation_variants(track_id,email,source_language,word);`);
+    if (!(this.db.prepare('PRAGMA table_info(user_preferences)').all() as {name:string}[]).some(column=>column.name==='auto_translate')) this.db.exec('ALTER TABLE user_preferences ADD COLUMN auto_translate INTEGER NOT NULL DEFAULT 1');
     this.db.exec('BEGIN IMMEDIATE');try {
       if(!this.db.prepare('SELECT 1 FROM feature_migrations WHERE name=?').get('song_translation_variants_v1')) {
         this.db.exec(`INSERT INTO song_translation_variants(track_id,email,source_language,target_language,word,translation,ai,updated_at) SELECT track_id,email,source_language,target_language,word,translation,0,updated_at FROM song_word_translations`);
@@ -101,6 +102,8 @@ export class Features {
   setOutputLimit(email:string,value:number|null) {
     this.db.prepare('INSERT INTO ai_output_limits(email,max_tokens) VALUES(?,?) ON CONFLICT(email) DO UPDATE SET max_tokens=excluded.max_tokens').run(email,value);
   }
+  autoTranslate(email:string) {return Boolean((this.db.prepare('SELECT auto_translate FROM user_preferences WHERE email=?').get(email) as {auto_translate:number}|undefined)?.auto_translate??1);}
+  setAutoTranslate(email:string,value:boolean) {this.db.prepare('INSERT INTO user_preferences(email,auto_translate) VALUES(?,?) ON CONFLICT(email) DO UPDATE SET auto_translate=excluded.auto_translate').run(email,value?1:0);}
   translationLanguage(email:string) {return (this.db.prepare('SELECT translation_language FROM user_preferences WHERE email=?').get(email) as {translation_language:string}|undefined)?.translation_language??'ru';}
   setTranslationLanguage(email:string,language:string) {this.db.prepare('INSERT INTO user_preferences(email,translation_language) VALUES(?,?) ON CONFLICT(email) DO UPDATE SET translation_language=excluded.translation_language').run(email,language);}
   private credential(email: string) {
