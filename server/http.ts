@@ -15,6 +15,7 @@ export interface AppOptions { features?: Features; bridge?: Bridge; chatHistory?
 export function createApp(options: AppOptions) {
   const app = express();
   const now = options.now ?? Date.now;
+  const translationJobs=new Map<string,{email:string;state:'pending'|'complete'|'failed';createdAt:number}>();
   const cookieName = options.secureCookies ? '__Host-music-shelf-session' : 'music-shelf-session';
   const cookieOptions = { httpOnly: true, secure: Boolean(options.secureCookies), sameSite: 'lax' as const, path: '/' };
   const token = (request: Request) => { const value = request.headers.cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(cookieName + '='))?.slice(cookieName.length + 1) ?? ''; return /^[A-Za-z0-9_-]{43}$/.test(value) ? value : ''; };
@@ -122,7 +123,7 @@ export function createApp(options: AppOptions) {
     if(!options.bridge){response.status(503).json({error:'Download service unavailable'});return;}
     try {const raw=await options.bridge.execute('set_retry_settings',{auto_stop:parsed.data.enabled,max_attempts:parsed.data.maxAttempts},20000);const result=z.object({auto_stop:z.boolean(),max_attempts:z.number().int().min(1).max(1000000)}).safeParse(raw);if(!result.success)throw new Error();response.json({enabled:result.data.auto_stop,maxAttempts:result.data.max_attempts,canEdit:true});}catch{response.status(503).json({error:'Unable to save download settings'});}
   });
-  app.get('/api/ai/settings', authorize, (_request, response) => response.json(options.features?.settings(response.locals.email) ?? {model:'',hasToken:false}));
+  app.get('/api/ai/settings', authorize, (_request, response) => response.json(options.features?.settings(response.locals.email) ?? {model:'',translationModel:'',hasToken:false}));
   app.get('/api/ai/output-limit', authorize, (_request,response)=>{
     if(!options.features){response.status(503).json({error:'AI unavailable'});return;}
     response.json({maxTokens:options.features.outputLimit(response.locals.email)});
@@ -134,13 +135,30 @@ export function createApp(options: AppOptions) {
     options.features.setOutputLimit(response.locals.email,parsed.data.maxTokens);response.json({maxTokens:parsed.data.maxTokens});
   });
   app.put('/api/ai/settings', authorize, sameOrigin, express.json({limit:'8kb'}), (request,response) => {
-    const parsed=z.object({model:z.string().max(200),token:z.string().min(1).max(512).optional(),removeToken:z.boolean().optional()}).strict().safeParse(request.body);
+    const parsed=z.object({model:z.string().max(200),translationModel:z.string().max(200).optional(),token:z.string().min(1).max(512).optional(),removeToken:z.boolean().optional()}).strict().safeParse(request.body);
     if (!parsed.success || (parsed.data.token && parsed.data.removeToken)) { response.status(400).json({error:'Invalid settings'}); return; }
     if (!options.features) { response.status(503).json({error:'AI unavailable'}); return; }
-    response.json(options.features.saveSettings(response.locals.email,parsed.data.model,parsed.data.token,parsed.data.removeToken));
+    response.json(options.features.saveSettings(response.locals.email,parsed.data.model,parsed.data.token,parsed.data.removeToken,parsed.data.translationModel));
   });
   app.get('/api/ai/models', authorize, async (_request,response) => {
     try { if (!options.features) throw new Error(); response.json({models:await options.features.models()}); } catch {response.status(502).json({error:'Unable to load models from OpenRouter'});}
+  });
+  app.post('/api/ai/translations',authorize,sameOrigin,express.json({limit:'4kb'}),(request,response)=>{
+    const parsed=z.object({requestId:z.uuid(),trackId:z.string().min(1).max(200),sourceLanguage:z.string().regex(/^[a-z]{2,3}$/),targetLanguage:z.string().regex(/^[a-z]{2,3}$/),word:translationPhrase}).strict().safeParse(request.body);
+    if(!parsed.success){response.status(400).json({error:'Invalid translation request'});return;}
+    const features=options.features,email=response.locals.email;if(!features){response.status(503).json({error:'AI unavailable'});return;}
+    const settings=features.settings(email);if(!settings.hasToken||!settings.translationModel){response.status(400).json({error:'Set an OpenRouter token and translation model in agent settings.'});return;}
+    if(!features.lyrics(parsed.data.trackId,email)){response.status(404).json({error:'Track not found'});return;}
+    for(const [key,job] of translationJobs)if(job.state!=='pending'&&Date.now()-job.createdAt>15*60*1000)translationJobs.delete(key);
+    if(translationJobs.has(parsed.data.requestId)){response.status(409).json({error:'Request already submitted'});return;}
+    if([...translationJobs.values()].filter(job=>job.email===email&&job.state==='pending').length>=3){response.status(429).json({error:'Too many translations in progress'});return;}
+    const {requestId,...scope}=parsed.data;const job={email,state:'pending' as 'pending'|'complete'|'failed',createdAt:Date.now()};translationJobs.set(requestId,job);
+    const message=`Translate the following exact selected text for this song and save it with the save_word_translations tool. Read the song lyrics for context. Track ID: ${JSON.stringify(scope.trackId)}; source language: ${scope.sourceLanguage}; target language: ${scope.targetLanguage}; exact selected text (JSON string): ${JSON.stringify(scope.word)}. Save the complete selected text as one entry; do not substitute individual words.`;
+    void features.chat(email,[{role:'user',content:message}],options.store,undefined,false,undefined,scope).then(result=>{job.state=result?'complete':'failed';}).catch(()=>{job.state='failed';console.error('Music Shelf translation: AI request failed');});
+    response.status(202).json({requestId,state:'pending'});
+  });
+  app.get('/api/ai/translations/:requestId',authorize,(request,response)=>{
+    const job=translationJobs.get(String(request.params.requestId));if(!job||job.email!==response.locals.email){response.status(404).json({error:'Translation request not found'});return;}response.json({state:job.state});
   });
   app.get('/api/ai/chat/history', authorize, (request,response) => {
     const before=request.query.before===undefined?undefined:Number(request.query.before);

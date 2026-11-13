@@ -23,8 +23,8 @@ test('song texts survive snapshots and tokens are encrypted and isolated by acco
     store.import({generatedAt:'2026-01-02T00:00:00.000Z',tracks:[track]});
     assert.deepEqual({...features.lyrics('track1','one@example.com')},{originalLanguage:'fr',texts:{fr:'lyrics',ru:'translation'}});
     features.saveSettings('one@example.com','a/b','secret-token');
-    assert.deepEqual(features.settings('one@example.com'),{model:'a/b',hasToken:true});
-    assert.deepEqual(features.settings('two@example.com'),{model:'',hasToken:false});
+    assert.deepEqual(features.settings('one@example.com'),{model:'a/b',translationModel:'a/b',hasToken:true});
+    assert.deepEqual(features.settings('two@example.com'),{model:'',translationModel:'',hasToken:false});
     assert.equal(await features.chat('two@example.com',[{role:'user',content:'Hi'}],store),null);
     assert.equal(await features.chat('one@example.com',[{role:'user',content:'Hi'}],store),'Hello');
     assert.equal(authorization,'Bearer secret-token');

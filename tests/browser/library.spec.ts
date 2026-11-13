@@ -7,6 +7,7 @@ test.beforeEach(async ({ page }) => {
   let maxTokens:number|null=null;
   await page.route('**/api/ai/output-limit',route=>{if(route.request().method()==='PUT')maxTokens=route.request().postDataJSON().maxTokens;return route.fulfill({json:{maxTokens}});});
   await page.route('**/api/ai/chat/turn/*', route=>route.fulfill({json:{state:'complete',reply:'Done'}}));
+  await page.route('**/api/ai/translations/*', route=>route.fulfill({json:{state:'complete'}}));
   await page.route('**/api/catalog?*', route => {
     const params = new URL(route.request().url()).searchParams;
     const query = (params.get('q') ?? '').toLowerCase();
@@ -31,8 +32,8 @@ test.beforeEach(async ({ page }) => {
 test('shows account, theme, settings and version in the application menu',async({page})=>{
  await page.getByRole('button',{name:'Open menu'}).click();
  const menu=page.getByRole('menu');await expect(menu.getByText('Theme:')).toBeVisible();await expect(menu.getByText('test@example.invalid')).toBeVisible();
- await expect(menu.getByText('0.2.36')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
- await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.36');
+ await expect(menu.getByText('0.2.37')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
+ await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.37');
 });
 test('marks overlapping translated phrases and supports quick AI translation',async({page})=>{
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'> Gracias a la vida\n> Gracias a la vida',ru:'',en:''}}}));
@@ -49,18 +50,18 @@ test('quick AI translation uses the account default language',async({page})=>{
  await page.route('**/api/preferences',route=>route.fulfill({json:{translationLanguage:'fr',autoTranslate:false}}));
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'Gracias',ru:'',en:''}}}));
  await page.route('**/api/tracks/*/words?*',route=>route.fulfill({json:{translations:translated?[{id:1,targetLanguage:'fr',translation:'Merci',ai:true}]:[]}}));
- await page.route('**/api/ai/chat',route=>{request=route.request().postDataJSON().message;translated=true;return route.fulfill({json:{state:'pending'}});});
+ await page.route('**/api/ai/translations',route=>{request=route.request().postDataJSON().targetLanguage;translated=true;return route.fulfill({json:{state:'pending'}});});
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const line=page.locator('.lyrics-markdown p');await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');
- const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await tip.getByRole('button',{name:'Translate selection with AI'}).click();await expect.poll(()=>request).toContain('target language: fr');await expect(tip).toContainText('Merci');
+ const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await tip.getByRole('button',{name:'Translate selection with AI'}).click();await expect.poll(()=>request).toBe('fr');await expect(tip).toContainText('Merci');
 });
 test('automatically translates a missing phrase and shows progress in place',async({page})=>{
  let sent=0,translated=false;let finish!:()=>void;const waiting=new Promise<void>(resolve=>finish=resolve);
  await page.route('**/api/preferences',route=>route.fulfill({json:{translationLanguage:'ru',autoTranslate:true}}));
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'Blanco',ru:'',en:''}}}));
  await page.route('**/api/tracks/*/words?*',route=>route.fulfill({json:{translations:translated?[{id:1,targetLanguage:'ru',translation:'белый',ai:true}]:[]}}));
- await page.route('**/api/ai/chat',async route=>{sent++;await waiting;translated=true;await route.fulfill({json:{state:'pending'}});});
+ await page.route('**/api/ai/translations',async route=>{sent++;await waiting;translated=true;await route.fulfill({json:{state:'pending'}});});
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const line=page.locator('.lyrics-markdown p');await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');
- const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip).toContainText('Translating with AI');await expect(tip.getByRole('status',{name:'Translating'})).toBeVisible();await expect(tip).not.toContainText('No saved translation');await expect(tip.getByRole('button',{name:'Add translation'})).toHaveCount(0);expect(sent).toBe(1);
+ const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip).toContainText('Translating with AI');await expect(tip).toContainText('0 s');await expect(tip.getByRole('status',{name:'Translating'})).toBeVisible();await expect(tip).not.toContainText('No saved translation');await expect(tip.getByRole('button',{name:'Add translation'})).toHaveCount(0);expect(sent).toBe(1);await expect(tip.getByText('1 s',{exact:true})).toBeVisible({timeout:2500});
  finish();await expect(tip).toContainText('белый');await expect(tip.getByText('AI',{exact:true})).toBeVisible();
  await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');await expect(tip).toContainText('белый');expect(sent).toBe(1);
 });
@@ -69,7 +70,7 @@ test('shows a failed AI translation and retries it without claiming no translati
  await page.route('**/api/preferences',route=>route.fulfill({json:{translationLanguage:'ru',autoTranslate:true}}));
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'Blanco',ru:'',en:''}}}));
  await page.route('**/api/tracks/*/words?*',route=>route.fulfill({json:{translations:translated?[{id:1,targetLanguage:'ru',translation:'белый',ai:true}]:[]}}));
- await page.route('**/api/ai/chat',route=>{calls++;if(calls===2)translated=true;return route.fulfill({json:{state:'pending'}});});
+ await page.route('**/api/ai/translations',route=>{calls++;if(calls===2)translated=true;return route.fulfill({json:{state:'pending'}});});
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const line=page.locator('.lyrics-markdown p');await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');
  const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip).toContainText('The agent could not translate.');await expect(tip).not.toContainText('No saved translation');await expect(page.getByRole('alert').filter({hasText:'Unable to translate with AI.'})).toBeVisible();
  await tip.getByRole('button',{name:'Retry translation'}).click();await expect(tip).toContainText('белый');await expect(tip).not.toContainText('The agent could not translate.');expect(calls).toBe(2);
@@ -233,9 +234,9 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
     if (route.request().method()==='PUT') {text={...text,...route.request().postDataJSON()};await route.fulfill({json:{ok:true}});} else await route.fulfill({json:text});
   });
   await page.route('**/api/tracks/*/language', route=>{text.originalLanguage=route.request().postDataJSON().language;return route.fulfill({json:{ok:true}});});
-  let hasToken=false;
-  await page.route('**/api/ai/settings', route => {if(route.request().method()==='PUT'){const body=route.request().postDataJSON();hasToken=body.removeToken?false:!!body.token||hasToken;}return route.fulfill({json:{model:'demo/model',hasToken}});});
-  await page.route('**/api/ai/models', route => route.fulfill({json:{models:[{id:'demo/model',name:'Demo model',supportsTools:true}]}}));
+  let hasToken=false;let selectedChat='demo/model',selectedTranslation='demo/model';
+  await page.route('**/api/ai/settings', route => {if(route.request().method()==='PUT'){const body=route.request().postDataJSON();hasToken=body.removeToken?false:!!body.token||hasToken;selectedChat=body.model;selectedTranslation=body.translationModel;}return route.fulfill({json:{model:selectedChat,translationModel:selectedTranslation,hasToken}});});
+  await page.route('**/api/ai/models', route => route.fulfill({json:{models:[{id:'demo/model',name:'Demo model',supportsTools:true},{id:'demo/translation',name:'Translation model',supportsTools:true}]}}));
   const turns:{id:number;requestId:string;message:string;reply:string;state:string;createdAt:string}[]=[];
   await page.route('**/api/ai/chat/history*', route => route.fulfill({json:{turns,nextBefore:null}}));
   await page.route('**/api/ai/chat', route => {const body=route.request().postDataJSON();turns.push({id:turns.length+1,requestId:body.requestId,message:body.message,reply:'A demo reply',state:'complete',createdAt:'2026-01-01T00:00:00Z'});return route.fulfill({json:{reply:'A demo reply'}});});
@@ -256,8 +257,8 @@ test('edits lyrics and configures the AI drawer', async ({ page }) => {
   await page.getByRole('button',{name:'AI assistant',exact:true}).click();
   await page.getByRole('button',{name:'Agent menu'}).click();await page.getByRole('menuitem',{name:'Agent settings'}).click();
   await page.getByLabel('OpenRouter API token').fill('sample-key');
-  await page.getByRole('combobox',{name:'OpenRouter model'}).click();await page.getByRole('option',{name:'Demo model (demo/model)'}).click();
-  await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByText('Settings saved')).toBeVisible();
+  await page.getByRole('combobox',{name:'Chat model'}).click();await page.getByRole('option',{name:'Demo model (demo/model)'}).click();await page.getByRole('combobox',{name:'Translation model'}).click();await page.getByRole('option',{name:'Translation model (demo/translation)'}).click();
+  await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByText('Settings saved')).toBeVisible();expect(selectedChat).toBe('demo/model');expect(selectedTranslation).toBe('demo/translation');
   const token=page.getByLabel('Replace API token');await expect(token).toHaveAttribute('type','password');await expect(token).toHaveAttribute('placeholder','●●●●●●●●●●●●');await expect(token).toHaveValue('');await expect(page.getByRole('button',{name:'Remove token'})).toBeVisible();await page.screenshot({path:'/tmp/music-shelf-settings-026.png'});await page.getByRole('button',{name:'Remove token'}).click();await expect(page.getByLabel('OpenRouter API token')).toBeVisible();await page.getByLabel('OpenRouter API token').fill('replacement-key');await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByLabel('Replace API token')).toHaveAttribute('placeholder','●●●●●●●●●●●●');
   await page.getByRole('button',{name:'Back to chat'}).click();await page.getByLabel('Message AI').fill('Hello');await page.getByRole('button',{name:'Send',exact:true}).click();await expect(page.getByText('A demo reply')).toBeVisible();
   await page.reload();await page.getByRole('button',{name:'AI assistant',exact:true}).click();await expect(page.getByText('Hello',{exact:true})).toBeVisible();await expect(page.getByText('A demo reply')).toBeVisible();
@@ -357,7 +358,7 @@ test('adds phrase translations manually and asks the agent to save a phrase',asy
  const stored:Record<string,string>={};
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'en',texts:{en:'Love is all',ru:'',es:''}}}));
  await page.route('**/api/tracks/*/words**',route=>{const req=route.request();if(req.method()==='PUT'){const body=req.postDataJSON();stored[body.word]=body.translation;return route.fulfill({json:{ok:true}});}const url=new URL(req.url());const word=url.searchParams.get('word')!;return route.fulfill({json:{translations:stored[word]?[{id:stored[word]==='Всё — любовь'?2:1,targetLanguage:'ru',translation:stored[word],ai:stored[word]==='Всё — любовь'}]:[]}});});
- await page.route('**/api/ai/chat',route=>{const message=route.request().postDataJSON().message;expect(message).toContain('Love is all');expect(message).toContain('save_word_translations');stored['Love is all']='Всё — любовь';return route.fulfill({json:{reply:'Saved'}});});
+ await page.route('**/api/ai/translations',route=>{expect(route.request().postDataJSON().word).toBe('Love is all');stored['Love is all']='Всё — любовь';return route.fulfill({json:{reply:'Saved'}});});
  await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const text=page.locator('.lyrics-markdown p');
  async function selectPhrase(){await text.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await text.dispatchEvent('mouseup');}
  await selectPhrase();let tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip).toContainText('No saved translation');await tip.getByRole('button',{name:'Add translation'}).click();await tip.getByLabel('Translation',{exact:true}).fill('Любовь — это всё');await tip.getByRole('button',{name:'Save',exact:true}).click();await expect(tip).toContainText('Любовь — это всё');

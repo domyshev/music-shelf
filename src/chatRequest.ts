@@ -21,3 +21,15 @@ export async function waitForChatTurn(requestId:string):Promise<ChatRequestResul
   }
   throw new Error('The response is still being processed. Check chat history and the download queue before retrying.');
 }
+
+export async function waitForTranslation(requestId:string):Promise<void> {
+  const deadline=Date.now()+10*60*1000;
+  while(Date.now()<deadline){
+    const response=await fetch(`/api/ai/translations/${encodeURIComponent(requestId)}`,{credentials:'same-origin',cache:'no-store'});
+    const result=await readApiResponse(response) as {state:string};
+    if(result.state==='complete')return;
+    if(result.state!=='pending')throw new Error('Translation could not be completed.');
+    await new Promise(resolve=>setTimeout(resolve,2000));
+  }
+  throw new Error('Translation is still being processed.');
+}

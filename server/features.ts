@@ -29,6 +29,7 @@ export class Features {
       CREATE TABLE IF NOT EXISTS feature_migrations (name TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS song_translation_variants (id INTEGER PRIMARY KEY, track_id TEXT NOT NULL, email TEXT NOT NULL, source_language TEXT NOT NULL, target_language TEXT NOT NULL, word TEXT NOT NULL, translation TEXT NOT NULL, ai INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS song_translation_lookup ON song_translation_variants(track_id,email,source_language,word);`);
+    if (!(this.db.prepare('PRAGMA table_info(ai_settings)').all() as {name:string}[]).some(column=>column.name==='translation_model')) this.db.exec("ALTER TABLE ai_settings ADD COLUMN translation_model TEXT NOT NULL DEFAULT ''");
     if (!(this.db.prepare('PRAGMA table_info(user_preferences)').all() as {name:string}[]).some(column=>column.name==='auto_translate')) this.db.exec('ALTER TABLE user_preferences ADD COLUMN auto_translate INTEGER NOT NULL DEFAULT 1');
     this.db.exec('BEGIN IMMEDIATE');try {
       if(!this.db.prepare('SELECT 1 FROM feature_migrations WHERE name=?').get('song_translation_variants_v1')) {
@@ -81,10 +82,10 @@ export class Features {
     return true;
   }
   settings(email: string) {
-    const row = this.db.prepare('SELECT model,token FROM ai_settings WHERE email=?').get(email) as {model:string;token:Uint8Array|null}|undefined;
-    return { model: row?.model ?? '', hasToken: Boolean(row?.token) };
+    const row = this.db.prepare('SELECT model,translation_model,token FROM ai_settings WHERE email=?').get(email) as {model:string;translation_model:string;token:Uint8Array|null}|undefined;
+    return { model: row?.model ?? '', translationModel:row?.translation_model || row?.model || '', hasToken: Boolean(row?.token) };
   }
-  saveSettings(email: string, model: string, token?: string, removeToken = false) {
+  saveSettings(email: string, model: string, token?: string, removeToken = false, translationModel?:string) {
     const row = this.db.prepare('SELECT token,iv,tag FROM ai_settings WHERE email=?').get(email) as {token:Uint8Array|null;iv:Uint8Array|null;tag:Uint8Array|null}|undefined;
     let encrypted = row?.token ?? null, iv = row?.iv ?? null, tag = row?.tag ?? null;
     if (removeToken) { encrypted = iv = tag = null; }
@@ -93,6 +94,7 @@ export class Features {
       encrypted = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]); tag = cipher.getAuthTag();
     }
     this.db.prepare(`INSERT INTO ai_settings(email,model,token,iv,tag) VALUES(?,?,?,?,?) ON CONFLICT(email) DO UPDATE SET model=excluded.model,token=excluded.token,iv=excluded.iv,tag=excluded.tag`).run(email, model, encrypted, iv, tag);
+    if(translationModel!==undefined)this.db.prepare('UPDATE ai_settings SET translation_model=? WHERE email=?').run(translationModel,email);
     return this.settings(email);
   }
   outputLimit(email:string) {
@@ -118,16 +120,17 @@ export class Features {
     const body = await response.json() as {data?: {id:string;name:string;pricing?:{prompt?:string;completion?:string};supported_parameters?:string[]}[]};
     return (body.data ?? []).filter(model => typeof model.id === 'string' && typeof model.name === 'string').map(({id,name,pricing,supported_parameters}) => ({id,name,pricing,supportsTools: supported_parameters?.includes('tools') ?? false}));
   }
-  async chat(email: string, messages: {role:'user'|'assistant';content:string}[], store: CatalogStore, bridge?: Bridge, canQueue=false, onUsage?:(usage:{prompt_tokens?:unknown;completion_tokens?:unknown;cost?:unknown}|undefined)=>void) {
+  async chat(email: string, messages: {role:'user'|'assistant';content:string}[], store: CatalogStore, bridge?: Bridge, canQueue=false, onUsage?:(usage:{prompt_tokens?:unknown;completion_tokens?:unknown;cost?:unknown}|undefined)=>void, translation?:{trackId:string;sourceLanguage:string;targetLanguage:string;word:string}) {
     const settings = this.credential(email); if (!settings) return null;
     const outputLimit=this.outputLimit(email);
+    if(translation)settings.model=this.settings(email).translationModel;
     const found = new Map();
     const conversation: object[] = [{role:'system',content:systemPrompt + selectionInstructions}, ...messages];
     let totalCalls=0;
     for (let round=0;round<12;round++) {
       const response = await this.transport('https://openrouter.ai/api/v1/chat/completions', {
         method:'POST', signal:AbortSignal.timeout(90000), headers:{Authorization:`Bearer ${settings.token}`,'Content-Type':'application/json'},
-        body:JSON.stringify({model:settings.model,messages:conversation,tools:tools(Boolean(bridge),canQueue),usage:{include:true},...(outputLimit!==null?{max_tokens:outputLimit}:{})}),
+        body:JSON.stringify({model:settings.model,messages:conversation,tools:translation?tools(false,false).filter(tool=>['read_song_texts','read_word_translations','save_word_translations'].includes(tool.function.name)):tools(Boolean(bridge),canQueue),usage:{include:true},...(outputLimit!==null?{max_tokens:outputLimit}:{})}),
       });
       if (!response.ok) throw new Error(`OpenRouter HTTP ${response.status}`);
       let result:{usage?:{prompt_tokens?:unknown;completion_tokens?:unknown;cost?:unknown};choices?:{finish_reason?:unknown;message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};
@@ -140,7 +143,7 @@ export class Features {
       totalCalls+=calls.length;if(calls.length>40||totalCalls>100)throw new Error('Too many tool calls');
       conversation.push({role:'assistant',content:typeof message.content==='string'?message.content:null,tool_calls:calls});
       for(const call of calls) {
-        let output:unknown; try{output=await runTool(store,this,email,bridge,canQueue,found,call.function.name,call.function.arguments);}catch(error){output={error: error instanceof Error && error.message.startsWith('Corgi did not respond') ? error.message : 'Tool request failed or is not permitted'};}
+        let output:unknown; try{if(translation){const args=JSON.parse(call.function.arguments);if(!['read_song_texts','read_word_translations','save_word_translations'].includes(call.function.name)||args.track_id!==translation.trackId||(call.function.name!=='read_song_texts'&&(args.source_language!==translation.sourceLanguage||('word' in args&&args.word!==translation.word)))||(call.function.name==='save_word_translations'&&(args.target_language!==translation.targetLanguage||!Array.isArray(args.entries)||args.entries.length!==1||args.entries[0]?.word!==translation.word)))throw new Error('Translation tool scope exceeded');}output=await runTool(store,this,email,bridge,canQueue,found,call.function.name,call.function.arguments);}catch(error){output={error: error instanceof Error && error.message.startsWith('Corgi did not respond') ? error.message : 'Tool request failed or is not permitted'};}
         conversation.push({role:'tool',tool_call_id:call.id,content:JSON.stringify(output)});
       }
     }
