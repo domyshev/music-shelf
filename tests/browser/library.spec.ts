@@ -31,8 +31,8 @@ test.beforeEach(async ({ page }) => {
 test('shows account, theme, settings and version in the application menu',async({page})=>{
  await page.getByRole('button',{name:'Open menu'}).click();
  const menu=page.getByRole('menu');await expect(menu.getByText('Theme:')).toBeVisible();await expect(menu.getByText('test@example.invalid')).toBeVisible();
- await expect(menu.getByText('0.2.35')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
- await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.35');
+ await expect(menu.getByText('0.2.36')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
+ await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.36');
 });
 test('marks overlapping translated phrases and supports quick AI translation',async({page})=>{
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'> Gracias a la vida\n> Gracias a la vida',ru:'',en:''}}}));
@@ -63,6 +63,16 @@ test('automatically translates a missing phrase and shows progress in place',asy
  const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip).toContainText('Translating with AI');await expect(tip.getByRole('status',{name:'Translating'})).toBeVisible();await expect(tip).not.toContainText('No saved translation');await expect(tip.getByRole('button',{name:'Add translation'})).toHaveCount(0);expect(sent).toBe(1);
  finish();await expect(tip).toContainText('белый');await expect(tip.getByText('AI',{exact:true})).toBeVisible();
  await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');await expect(tip).toContainText('белый');expect(sent).toBe(1);
+});
+test('shows a failed AI translation and retries it without claiming no translation',async({page})=>{
+ let calls=0;let translated=false;
+ await page.route('**/api/preferences',route=>route.fulfill({json:{translationLanguage:'ru',autoTranslate:true}}));
+ await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'Blanco',ru:'',en:''}}}));
+ await page.route('**/api/tracks/*/words?*',route=>route.fulfill({json:{translations:translated?[{id:1,targetLanguage:'ru',translation:'белый',ai:true}]:[]}}));
+ await page.route('**/api/ai/chat',route=>{calls++;if(calls===2)translated=true;return route.fulfill({json:{state:'pending'}});});
+ await page.getByRole('button',{name:'Fictional song 0000',exact:true}).click();const line=page.locator('.lyrics-markdown p');await line.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);});await line.dispatchEvent('mouseup');
+ const tip=page.getByRole('dialog',{name:'Word or phrase translation'});await expect(tip).toContainText('The agent could not translate.');await expect(tip).not.toContainText('No saved translation');await expect(page.getByRole('alert').filter({hasText:'Unable to translate with AI.'})).toBeVisible();
+ await tip.getByRole('button',{name:'Retry translation'}).click();await expect(tip).toContainText('белый');await expect(tip).not.toContainText('The agent could not translate.');expect(calls).toBe(2);
 });
 test('selects the saved output token limit inside the assistant input',async({page})=>{
  await page.getByRole('button',{name:'AI assistant',exact:true}).click();
