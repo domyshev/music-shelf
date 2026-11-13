@@ -28,6 +28,12 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('table', { name: 'Songs', exact: true })).toBeVisible();
 });
+test('shows account, theme, settings and version in the application menu',async({page})=>{
+ await page.getByRole('button',{name:'Open menu'}).click();
+ const menu=page.getByRole('menu');await expect(menu.getByText('Theme:')).toBeVisible();await expect(menu.getByText('test@example.invalid')).toBeVisible();
+ await expect(menu.getByText('0.2.33')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
+ await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.33');
+});
 test('marks overlapping translated phrases and supports quick AI translation',async({page})=>{
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'> Gracias a la vida\n> Gracias a la vida',ru:'',en:''}}}));
  await page.route('**/api/tracks/*/phrases',route=>route.fulfill({json:{phrases:[{sourceLanguage:'es',word:'gracias'},{sourceLanguage:'es',word:'gracias a la vida'}]}}));
