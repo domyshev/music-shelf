@@ -8,10 +8,13 @@ import { AuthError, codeLifetime, sessionLifetime, type EmailAuth, type LoginMai
 import { snapshotSchema, historyFilterSchema, catalogQuerySchema } from '../shared/catalog.js';
 import { CatalogStore, SnapshotConflict } from './store.js';
 import type { Features } from './features.js';
-import type { Bridge } from './bridge.js';
 import { ChatBusy, ChatDuplicate, type ChatHistory } from './chat-history.js';
+import type { UploadKeys } from './upload-keys.js';
+import { UploadRejected, type Uploads } from './uploads.js';
+import type { StorageAuth } from './storage-auth.js';
+import { trackSchema } from '../shared/catalog.js';
 
-export interface AppOptions { features?: Features; bridge?: Bridge; chatHistory?: ChatHistory; queueUsers?: string[]; demo?: boolean; store: CatalogStore; auth: EmailAuth; mailer: LoginMailer; origin: string; secureCookies?: boolean; publisherKey?: KeyObject; clientDirectory?: string; now?: () => number }
+export interface AppOptions { storageAuth?: StorageAuth; uploads?: Uploads; uploadKeys?: UploadKeys; features?: Features; chatHistory?: ChatHistory; uploadUsers?: string[]; demo?: boolean; store: CatalogStore; auth: EmailAuth; mailer: LoginMailer; origin: string; secureCookies?: boolean; publisherKey?: KeyObject; clientDirectory?: string; now?: () => number }
 export function createApp(options: AppOptions) {
   const app = express();
   const now = options.now ?? Date.now;
@@ -68,6 +71,51 @@ export function createApp(options: AppOptions) {
   app.post('/api/auth/logout', sameOrigin, (request, response) => {
     options.auth.logout(token(request)); response.clearCookie(cookieName, cookieOptions); response.json({ ok: true });
   });
+  // Upload credentials can only be managed by an explicitly configured owner.
+  const uploadOwner = (_request: Request, response: Response, next: NextFunction) => {
+    if (!options.uploadUsers?.includes(response.locals.email)) { response.status(403).json({error:'Only an owner can manage upload keys'}); return; }
+    if (!options.uploadKeys) { response.status(503).json({error:'Upload keys unavailable'}); return; }
+    next();
+  };
+  app.get('/api/upload-keys', authorize, uploadOwner, (_request, response) => response.json({keys: options.uploadKeys!.list(response.locals.email)}));
+  app.post('/api/upload-keys', authorize, sameOrigin, uploadOwner, express.json({limit:'1kb'}), (request, response) => {
+    const parsed=z.object({name:z.string().trim().min(1).max(100).refine(value=>!/[\u0000-\u001f\u007f]/u.test(value))}).strict().safeParse(request.body);
+    if (!parsed.success) { response.status(400).json({error:'Invalid key name'}); return; }
+    response.status(201).json(options.uploadKeys!.create(response.locals.email,parsed.data.name));
+  });
+  app.delete('/api/upload-keys/:id', authorize, sameOrigin, uploadOwner, (request, response) => {
+    if (!z.uuid().safeParse(request.params.id).success || !options.uploadKeys!.revoke(response.locals.email,String(request.params.id))) { response.status(404).json({error:'Key not found'}); return; }
+    response.json({ok:true});
+  });
+  const uploadAccess=(request:Request,response:Response,next:NextFunction)=>{
+    const authorization=request.get('Authorization');
+    const credential=authorization?.startsWith('Bearer ') ? options.uploadKeys?.authenticate(authorization.slice(7)) : undefined;
+    const owner=authorization ? credential?.owner : options.auth.session(token(request));
+    if(!owner||!options.uploadUsers?.includes(owner)){response.status(401).json({error:'Upload authorization required'});return;}
+    response.locals.email=owner;response.locals.uploadKey=Boolean(credential);next();
+  };
+  app.get('/api/uploads', uploadAccess, (_request,response)=>{
+    if(!options.uploads){response.status(503).json({error:'Uploads unavailable'});return;}
+    response.json({uploads:options.uploads.list(response.locals.email)});
+  });
+  app.get('/api/uploads/:id',uploadAccess,(request,response)=>{
+    const report=options.uploads?.owned(response.locals.email,String(request.params.id));
+    if(!report){response.status(404).json({error:'Upload not found'});return;}
+    response.json(report);
+  });
+  app.post('/api/uploads', uploadAccess, async (request, response) => {
+    if (!response.locals.uploadKey && request.get('Origin')!==options.origin) { response.status(403).json({error:'Untrusted origin'}); return; }
+    if (!options.uploads) { response.status(503).json({error:'Uploads unavailable'}); return; }
+    const wait=request.query.wait===undefined?0:Number(request.query.wait);
+    if(!Number.isInteger(wait)||wait<0||wait>30){response.status(400).json({error:'Invalid wait interval'});return;}
+    try {
+      let report=await options.uploads.receive(request,response.locals.email);
+      const until=Date.now()+wait*1000;
+      while(report.status==='staged'&&Date.now()<until&&!response.destroyed){await new Promise(resolve=>setTimeout(resolve,250));report=options.uploads.get(report.id)!;}
+      response.status(report.status==='staged'?202:200).json(report);
+    }
+    catch(error) { if (!response.headersSent) response.status(400).json({error:'Invalid or interrupted upload',...(error instanceof UploadRejected?error.report:{})}); }
+  });
   app.get('/api/tracks/:id/text', authorize, (request, response) => {
     const data = options.features?.lyrics(String(request.params.id),response.locals.email); if (!data) { response.status(404).json({ error: 'Song not found' }); return; } response.json(data);
   });
@@ -111,18 +159,10 @@ export function createApp(options: AppOptions) {
     if (!options.features?.setOriginalLanguage(String(request.params.id),data.data.language)) { response.status(404).json({error:'Song not found'}); return; }
     response.json({ok:true});
   });
-  app.get('/api/download/settings', authorize, async (_request,response) => {
-    if(!options.bridge){response.status(503).json({error:'Download service unavailable'});return;}
-    try {const raw=await options.bridge.execute('retry_settings',{},20000);const result=z.object({auto_stop:z.boolean(),max_attempts:z.number().int().min(1).max(1000000)}).safeParse(raw);if(!result.success)throw new Error();response.json({enabled:result.data.auto_stop,maxAttempts:result.data.max_attempts,canEdit:options.queueUsers?.includes(response.locals.email)??false});}catch{response.status(503).json({error:'Unable to load download settings'});}
-  });
+
   app.get('/api/preferences',authorize,(_request,response)=>{if(!options.features){response.status(503).json({error:'Settings unavailable'});return;}response.json({translationLanguage:options.features.translationLanguage(response.locals.email),autoTranslate:options.features.autoTranslate(response.locals.email)});});
   app.put('/api/preferences',authorize,sameOrigin,express.json({limit:'1kb'}),(request,response)=>{const parsed=z.object({translationLanguage:z.string().regex(/^(?!und$)[a-z]{2,3}$/).optional(),autoTranslate:z.boolean().optional()}).strict().refine(value=>value.translationLanguage!==undefined||value.autoTranslate!==undefined).safeParse(request.body);if(!parsed.success){response.status(400).json({error:'Invalid preferences'});return;}if(!options.features){response.status(503).json({error:'Settings unavailable'});return;}if(parsed.data.translationLanguage!==undefined)options.features.setTranslationLanguage(response.locals.email,parsed.data.translationLanguage);if(parsed.data.autoTranslate!==undefined)options.features.setAutoTranslate(response.locals.email,parsed.data.autoTranslate);response.json({translationLanguage:options.features.translationLanguage(response.locals.email),autoTranslate:options.features.autoTranslate(response.locals.email)});});
-  app.put('/api/download/settings', authorize, sameOrigin, express.json({limit:'2kb'}), async (request,response) => {
-    if(!options.queueUsers?.includes(response.locals.email)){response.status(403).json({error:'Only the owner can change download settings'});return;}
-    const parsed=z.object({enabled:z.boolean(),maxAttempts:z.number().int().min(1).max(1000000)}).strict().safeParse(request.body);if(!parsed.success){response.status(400).json({error:'Invalid download settings'});return;}
-    if(!options.bridge){response.status(503).json({error:'Download service unavailable'});return;}
-    try {const raw=await options.bridge.execute('set_retry_settings',{auto_stop:parsed.data.enabled,max_attempts:parsed.data.maxAttempts},20000);const result=z.object({auto_stop:z.boolean(),max_attempts:z.number().int().min(1).max(1000000)}).safeParse(raw);if(!result.success)throw new Error();response.json({enabled:result.data.auto_stop,maxAttempts:result.data.max_attempts,canEdit:true});}catch{response.status(503).json({error:'Unable to save download settings'});}
-  });
+
   app.get('/api/ai/settings', authorize, (_request, response) => response.json(options.features?.settings(response.locals.email) ?? {model:'',translationModel:'',hasToken:false}));
   app.get('/api/ai/output-limit', authorize, (_request,response)=>{
     if(!options.features){response.status(503).json({error:'AI unavailable'});return;}
@@ -154,7 +194,7 @@ export function createApp(options: AppOptions) {
     if([...translationJobs.values()].filter(job=>job.email===email&&job.state==='pending').length>=3){response.status(429).json({error:'Too many translations in progress'});return;}
     const {requestId,...scope}=parsed.data;const job={email,state:'pending' as 'pending'|'complete'|'failed',createdAt:Date.now()};translationJobs.set(requestId,job);
     const message=`Translate the following exact selected text for this song and save it with the save_word_translations tool. Read the song lyrics for context. Track ID: ${JSON.stringify(scope.trackId)}; source language: ${scope.sourceLanguage}; target language: ${scope.targetLanguage}; exact selected text (JSON string): ${JSON.stringify(scope.word)}. Save the complete selected text as one entry; do not substitute individual words.`;
-    void features.chat(email,[{role:'user',content:message}],options.store,undefined,false,undefined,scope).then(result=>{job.state=result?'complete':'failed';}).catch(()=>{job.state='failed';console.error('Music Shelf translation: AI request failed');});
+    void features.chat(email,[{role:'user',content:message}],options.store,undefined,scope).then(result=>{job.state=result?'complete':'failed';}).catch(()=>{job.state='failed';console.error('Music Shelf translation: AI request failed');});
     response.status(202).json({requestId,state:'pending'});
   });
   app.get('/api/ai/translations/:requestId',authorize,(request,response)=>{
@@ -187,7 +227,7 @@ export function createApp(options: AppOptions) {
     void (async()=>{
       const started=Date.now();let inputTokens=0,outputTokens=0,cost=0,hasUsage=false,completeTokens=true,completeCost=true;
       try {
-        const reply=await features.chat(email,history.context(email,requestId),options.store,options.bridge,options.queueUsers?.includes(email) ?? false,usage=>{hasUsage=true;const valid=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>=0;if(valid(usage?.prompt_tokens)&&valid(usage?.completion_tokens)){inputTokens+=usage.prompt_tokens;outputTokens+=usage.completion_tokens;}else completeTokens=false;if(valid(usage?.cost))cost+=usage.cost;else completeCost=false;});
+        const reply=await features.chat(email,history.context(email,requestId),options.store,usage=>{hasUsage=true;const valid=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>=0;if(valid(usage?.prompt_tokens)&&valid(usage?.completion_tokens)){inputTokens+=usage.prompt_tokens;outputTokens+=usage.completion_tokens;}else completeTokens=false;if(valid(usage?.cost))cost+=usage.cost;else completeCost=false;});
         if(reply===null)throw new Error('AI settings unavailable');
         history.complete(email,requestId,reply,{inputTokens:hasUsage&&completeTokens?inputTokens:null,outputTokens:hasUsage&&completeTokens?outputTokens:null,cost:hasUsage&&completeCost?cost:null,durationMs:Date.now()-started});
       } catch(error) {
@@ -220,24 +260,26 @@ export function createApp(options: AppOptions) {
     try { response.json(options.store.history(limit, cursor, filters.data)); }
     catch { response.status(400).json({ error: 'Invalid history cursor' }); }
   });
-  app.post(['/api/bridge/claim','/api/bridge/complete','/api/bridge/selections'], express.raw({type:'application/json',limit:'300kb'}), (request,response) => {
-    if (!options.publisherKey || !options.bridge) {response.status(503).json({error:'Bridge unavailable'});return;}
-    const timestamp=request.get('X-Shelf-Timestamp') ?? '', signature=request.get('X-Shelf-Signature') ?? '';
-    if (!/^\d{10}$/.test(timestamp) || Math.abs(now()-Number(timestamp)*1000)>120000 || !Buffer.isBuffer(request.body)) {response.status(400).json({error:'Invalid request'});return;}
+  app.post(['/api/storage/poll','/api/storage/file','/api/storage/complete','/api/storage/register'], express.raw({type:'application/json',limit:'300kb'}), async (request,response) => {
+    if(!options.storageAuth||!options.uploads){response.status(503).json({error:'Storage unavailable'});return;}
+    if(!Buffer.isBuffer(request.body)||!options.storageAuth.authenticate(request.path,request.get('X-Shelf-Timestamp')??'',request.get('X-Shelf-Signature')??'',request.body)){response.status(403).json({error:'Invalid storage signature'});return;}
     try {
-      const signed=Buffer.concat([Buffer.from(timestamp+'\n'+request.path+'\n'),request.body]);
-      if (!verify(null,signed,options.publisherKey,Buffer.from(signature,'base64'))) {response.status(403).json({error:'Invalid signature'});return;}
-      const body=JSON.parse(request.body.toString('utf8')) as {nonce?:unknown;id?:unknown;result?:unknown};
-      if(typeof body.nonce!=='string' || !/^[a-f0-9]{32}$/.test(body.nonce) || !options.bridge.nonce(body.nonce,now())) {response.status(403).json({error:'Invalid or repeated request'});return;}
-      if(request.path.endsWith('/claim')) {response.json({job:options.bridge.claim()});return;}
-      if(request.path.endsWith('/selections')) {
-        if (!options.features || options.queueUsers?.length !== 1) {response.status(503).json({error:'Selection synchronization is not configured for exactly one owner'});return;}
-        const selections=options.features.tags.list(options.queueUsers[0]).map(({id,name,trackIds})=>({id,name,trackIds}));
-        response.json({selections});return;
+      const raw=JSON.parse(request.body.toString('utf8'));
+      if(request.path.endsWith('/poll')) {z.object({nonce:z.string()}).strict().parse(raw);response.json({upload:options.uploads.next(),selections:options.uploadUsers?.length===1 ? options.features?.tags.list(options.uploadUsers[0]).map(({id,name,trackIds})=>({id,name,trackIds}))??[] : []});return;}
+      if(request.path.endsWith('/file')) {
+        const {id,index}=z.object({nonce:z.string(),id:z.uuid(),index:z.number().int().nonnegative().max(199)}).strict().parse(raw);
+        const item=options.uploads.file(id,index);if(!item){response.status(404).json({error:'File not found'});return;}
+        response.set({'Content-Type':'application/octet-stream','X-Content-SHA256':item.file.sha256});
+        response.sendFile(item.path,error=>{if(error&&!response.headersSent)response.status(404).json({error:'File not found'});});return;
       }
-      if(typeof body.id!=='string' || !/^[a-f0-9-]{36}$/.test(body.id) || typeof body.result!=='object' || !body.result) {response.status(400).json({error:'Invalid result'});return;}
-      response.json({ok:options.bridge.complete(body.id,body.result)});
-    } catch {response.status(400).json({error:'Invalid bridge request'});}
+      if(request.path.endsWith('/register')) {
+        const {track}=z.object({nonce:z.string(),track:trackSchema}).strict().parse(raw);
+        if(track.status!=='ready'||!track.file)throw new Error('Invalid file');
+        response.json({id:options.store.registerFile({...track,id:`sha256:${track.file.sha256}`})});return;
+      }
+      const {id,results}=z.object({nonce:z.string(),id:z.uuid(),results:z.unknown()}).strict().parse(raw);
+      response.json(await options.uploads.complete(id,results,options.store));
+    } catch {if(!response.headersSent)response.status(400).json({error:'Invalid storage request'});}
   });
   app.post('/api/import', express.raw({ type: 'application/json', limit: '8mb' }), (request, response) => {
     response.set('Cache-Control', 'no-store');

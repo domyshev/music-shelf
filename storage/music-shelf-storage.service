@@ -1,0 +1,33 @@
+[Unit]
+Description=Music Shelf outbound music storage worker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ilia
+Group=ilia
+EnvironmentFile=/etc/music-shelf-storage.conf
+ExecStart=/usr/bin/python3 -B /home/ilia/.local/opt/music-shelf-storage/worker.py
+Restart=on-failure
+RestartSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/ilia/.local/opt/music-shelf-storage
+BindReadOnlyPaths=/home/ilia/.config/music-shelf-storage
+BindPaths=/home/ilia/Music/MusicShelf
+ReadWritePaths=/var/lib/music-shelf-storage
+RestrictSUIDSGID=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=512M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

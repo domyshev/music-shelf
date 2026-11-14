@@ -2,7 +2,6 @@ import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:
 import { DatabaseSync } from 'node:sqlite';
 import type { CatalogStore } from './store.js';
 import { systemPrompt, selectionInstructions, tools, runTool } from './assistant.js';
-import type { Bridge } from './bridge.js';
 import { normalizePhrase } from './translation-phrase.js';
 import { Tags } from './tags.js';
 
@@ -40,6 +39,10 @@ export class Features {
     } catch(error) {this.db.exec('ROLLBACK');throw error;}
   }
   close() { this.tags.close(); this.db.close(); }
+  uploadHistory(email:string) {
+    if (!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='music_uploads'").get()) return [];
+    return (this.db.prepare('SELECT report FROM music_uploads WHERE owner=? ORDER BY created_at DESC,id DESC LIMIT 20').all(email) as {report:string}[]).map(row=>JSON.parse(row.report));
+  }
   lyrics(id: string, email: string) {
     if (!this.db.prepare('SELECT 1 FROM tracks WHERE id=?').get(id)) return null;
     const row = this.db.prepare('SELECT original_language, texts FROM track_text_languages WHERE track_id=? AND email=?').get(id, email) as {original_language:string;texts:string}|undefined;
@@ -120,17 +123,16 @@ export class Features {
     const body = await response.json() as {data?: {id:string;name:string;pricing?:{prompt?:string;completion?:string};supported_parameters?:string[]}[]};
     return (body.data ?? []).filter(model => typeof model.id === 'string' && typeof model.name === 'string').map(({id,name,pricing,supported_parameters}) => ({id,name,pricing,supportsTools: supported_parameters?.includes('tools') ?? false}));
   }
-  async chat(email: string, messages: {role:'user'|'assistant';content:string}[], store: CatalogStore, bridge?: Bridge, canQueue=false, onUsage?:(usage:{prompt_tokens?:unknown;completion_tokens?:unknown;cost?:unknown}|undefined)=>void, translation?:{trackId:string;sourceLanguage:string;targetLanguage:string;word:string}) {
+  async chat(email: string, messages: {role:'user'|'assistant';content:string}[], store: CatalogStore, onUsage?:(usage:{prompt_tokens?:unknown;completion_tokens?:unknown;cost?:unknown}|undefined)=>void, translation?:{trackId:string;sourceLanguage:string;targetLanguage:string;word:string}) {
     const settings = this.credential(email); if (!settings) return null;
     const outputLimit=this.outputLimit(email);
     if(translation)settings.model=this.settings(email).translationModel;
-    const found = new Map();
     const conversation: object[] = [{role:'system',content:systemPrompt + selectionInstructions}, ...messages];
     let totalCalls=0;
     for (let round=0;round<12;round++) {
       const response = await this.transport('https://openrouter.ai/api/v1/chat/completions', {
         method:'POST', signal:AbortSignal.timeout(90000), headers:{Authorization:`Bearer ${settings.token}`,'Content-Type':'application/json'},
-        body:JSON.stringify({model:settings.model,messages:conversation,tools:translation?tools(false,false).filter(tool=>['read_song_texts','read_word_translations','save_word_translations'].includes(tool.function.name)):tools(Boolean(bridge),canQueue),usage:{include:true},...(outputLimit!==null?{max_tokens:outputLimit}:{})}),
+        body:JSON.stringify({model:settings.model,messages:conversation,tools:translation?tools().filter(tool=>['read_song_texts','read_word_translations','save_word_translations'].includes(tool.function.name)):tools(),usage:{include:true},...(outputLimit!==null?{max_tokens:outputLimit}:{})}),
       });
       if (!response.ok) throw new Error(`OpenRouter HTTP ${response.status}`);
       let result:{usage?:{prompt_tokens?:unknown;completion_tokens?:unknown;cost?:unknown};choices?:{finish_reason?:unknown;message?:{role?:string;content?:unknown;tool_calls?:{id:string;type:string;function:{name:string;arguments:string}}[]}}[]};
@@ -143,7 +145,7 @@ export class Features {
       totalCalls+=calls.length;if(calls.length>40||totalCalls>100)throw new Error('Too many tool calls');
       conversation.push({role:'assistant',content:typeof message.content==='string'?message.content:null,tool_calls:calls});
       for(const call of calls) {
-        let output:unknown; try{if(translation){const args=JSON.parse(call.function.arguments);if(!['read_song_texts','read_word_translations','save_word_translations'].includes(call.function.name)||args.track_id!==translation.trackId||(call.function.name!=='read_song_texts'&&(args.source_language!==translation.sourceLanguage||('word' in args&&args.word!==translation.word)))||(call.function.name==='save_word_translations'&&(args.target_language!==translation.targetLanguage||!Array.isArray(args.entries)||args.entries.length!==1||args.entries[0]?.word!==translation.word)))throw new Error('Translation tool scope exceeded');}output=await runTool(store,this,email,bridge,canQueue,found,call.function.name,call.function.arguments);}catch(error){output={error: error instanceof Error && error.message.startsWith('Corgi did not respond') ? error.message : 'Tool request failed or is not permitted'};}
+        let output:unknown; try{if(translation){const args=JSON.parse(call.function.arguments);if(!['read_song_texts','read_word_translations','save_word_translations'].includes(call.function.name)||args.track_id!==translation.trackId||(call.function.name!=='read_song_texts'&&(args.source_language!==translation.sourceLanguage||('word' in args&&args.word!==translation.word)))||(call.function.name==='save_word_translations'&&(args.target_language!==translation.targetLanguage||!Array.isArray(args.entries)||args.entries.length!==1||args.entries[0]?.word!==translation.word)))throw new Error('Translation tool scope exceeded');}output=await runTool(store,this,email,call.function.name,call.function.arguments);}catch(error){output={error: 'Tool request failed or is not permitted'};}
         conversation.push({role:'tool',tool_call_id:call.id,content:JSON.stringify(output)});
       }
     }

@@ -13,7 +13,7 @@ import CloseRounded from '@mui/icons-material/CloseRounded';
 import { signIn, signOut, requestLoginCode, uiActions, useAppDispatch, useAppSelector, useCatalogQuery } from './store';
 import type { CatalogQuery } from '../shared/catalog';
 import { version } from '../package.json';
-import { DownloadSettings } from './components/DownloadSettings';
+import { AppSettings } from './components/AppSettings';
 import { ColumnChooser } from './components/ColumnChooser';
 import { LibraryFilters } from './components/LibraryFilters';
 import { catalogRequestFilters } from './catalogFilters';
@@ -22,6 +22,8 @@ import { HistoryPopover } from './components/HistoryPopover';
 import { TrackDetails } from './components/TrackDetails';
 import { AiDrawer } from './components/AiDrawer';
 import AutoAwesomeOutlined from '@mui/icons-material/AutoAwesomeOutlined';
+import AddRounded from '@mui/icons-material/AddRounded';
+import { UploadDialog } from './components/UploadDialog';
 
 function Wordmark() { return <Typography component="span" className="wordmark">music shelf<img src="/music-shelf.svg" alt="" aria-hidden="true" className="wordmark-icon" /></Typography>; }
 function Login() {
@@ -53,6 +55,7 @@ export default function App() {
   const deferredSearch = useDeferredValue(search);
   const catalogQuery = useMemo<CatalogQuery>(() => ({ page, pageSize, q: deferredSearch, sort: (sorting[0]?.id ?? 'position') as CatalogQuery['sort'], direction: sorting[0]?.desc ? 'desc' : 'asc', filters: catalogRequestFilters(columnFilters) }), [page, pageSize, deferredSearch, sorting, columnFilters]);
   const { currentData: data, isLoading, isFetching, isError, refetch } = useCatalogQuery(catalogQuery, { skip: !authenticated, pollingInterval: 30000, skipPollingIfUnfocused: true, refetchOnFocus: true, refetchOnReconnect: true });
+  const [uploadOpen,setUploadOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false); const [aiOpen, setAiOpen] = useState(false);const [settingsOpen,setSettingsOpen]=useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null); const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
   useEffect(() => { if (data?.pagination && page > Math.max(1, data.pagination.pages)) dispatch(uiActions.setPage(Math.max(1, data.pagination.pages))); }, [data?.pagination, page, dispatch]);
@@ -67,14 +70,15 @@ export default function App() {
     </ToggleButtonGroup></Box><MenuItem sx={{px:2,py:1,borderBottom:1,borderColor:'divider',gap:2}} onClick={()=>{setMenuAnchor(null);setAboutOpen(true);}}><InfoOutlined sx={{fontSize:20,color:'text.secondary'}}/><Typography sx={{flex:1}}>About…</Typography><Typography variant="body2" color="text.secondary">{version}</Typography></MenuItem><MenuItem sx={{px:2,py:1.5,borderBottom:1,borderColor:'divider',gap:2}} onClick={()=>{setMenuAnchor(null);setSettingsOpen(true);}}><SettingsOutlined sx={{fontSize:20,color:'text.secondary'}}/>Settings</MenuItem><MenuItem sx={{px:2,py:1.5,gap:2}} onClick={() => { setMenuAnchor(null); setHistoryAnchor(null); dispatch(signOut()); }}><LogoutRounded sx={{fontSize:20,color:'text.secondary'}} /><Box sx={{minWidth:0}}><Typography>Sign out</Typography><Typography variant="body2" color="text.secondary" sx={{overflowWrap:'anywhere'}}>{email}</Typography></Box></MenuItem></Menu><Dialog open={aboutOpen} onClose={()=>setAboutOpen(false)}><DialogTitle>About Music Shelf</DialogTitle><DialogContent><Typography>Music Shelf · {version}</Typography></DialogContent><DialogActions><Button onClick={()=>setAboutOpen(false)}>Close</Button></DialogActions></Dialog></Box>
     <Box component="main" className="workspace">{authError && <Alert severity="error" sx={{ mt: 1 }}>{authError}</Alert>}
       <Box className="toolbar"><Box className="search-group"><TextField placeholder="Search songs, artists and albums" aria-label="Search songs" value={search} onChange={event => dispatch(uiActions.setSearch(event.target.value))} className="search" slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRounded sx={{ fontSize: 18, color: 'text.secondary' }} /></InputAdornment>, endAdornment: search ? <InputAdornment position="end"><IconButton aria-label="Clear search" onClick={() => dispatch(uiActions.setSearch(''))}><CloseRounded sx={{ fontSize: 15 }} /></IconButton></InputAdornment> : undefined } }} /><LibraryFilters facets={data?.facets} tags={data?.tagOptions}/></Box>
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }} className="statistics" aria-live="polite">{data?.demo && <Typography className="demo-label" component="span" color="warning.main" sx={{ fontSize: 10 }}>Demo · fictional songs</Typography>}<Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>Total <b>{stats?.total ?? '—'}</b></Typography><Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>ready <b className="ready-number">{stats?.ready ?? '—'}</b></Typography><Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>pending <b>{stats?.pending ?? '—'}</b></Typography><ColumnChooser /><Tooltip title="Download history"><IconButton aria-label="Download history" onClick={event => setHistoryAnchor(event.currentTarget)}><HistoryRounded sx={{ fontSize: 20 }} /></IconButton></Tooltip></Stack>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }} className="statistics" aria-live="polite">{data?.demo && <Typography className="demo-label" component="span" color="warning.main" sx={{ fontSize: 10 }}>Demo · fictional songs</Typography>}<Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>Total <b>{stats?.total ?? '—'}</b></Typography><Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>ready <b className="ready-number">{stats?.ready ?? '—'}</b></Typography><Typography component="span" color="text.secondary" sx={{ fontSize: 11 }}>pending <b>{stats?.pending ?? '—'}</b></Typography><ColumnChooser /><Tooltip title="Upload music"><IconButton aria-label="Upload music" onClick={()=>setUploadOpen(true)}><AddRounded /></IconButton></Tooltip><Tooltip title="Download history"><IconButton aria-label="Download history" onClick={event => setHistoryAnchor(event.currentTarget)}><HistoryRounded sx={{ fontSize: 20 }} /></IconButton></Tooltip></Stack>
       </Box>
       <Box className="loading-line">{isFetching && <LinearProgress sx={{ height: 2 }} />}</Box>
       {isError && <Alert severity="warning" sx={{ mb: 1 }} action={<Button onClick={() => void refetch()}>Retry</Button>}>{data ? 'Unable to refresh the library. Showing the last available data.' : 'Unable to load the library.'}</Alert>}
       {isLoading || (isFetching && !data) ? <Box className="initial-loading"><CircularProgress size={24} /></Box> : <LibraryTable tracks={data?.tracks ?? []} total={data?.pagination?.total ?? 0} facets={data?.facets} tagsByTrack={data?.tagsByTrack} />}
     </Box>
-    <DownloadSettings open={settingsOpen} onClose={()=>setSettingsOpen(false)} />
-    <AiDrawer open={aiOpen} onClose={() => setAiOpen(false)} />
+    <AppSettings open={settingsOpen} onClose={()=>setSettingsOpen(false)} />
+    <AiDrawer open={aiOpen} onClose={() => setAiOpen(false)} onUpload={()=>setUploadOpen(true)} />
+    <UploadDialog open={uploadOpen} onClose={()=>setUploadOpen(false)} />
     <HistoryPopover anchor={historyAnchor} onClose={() => setHistoryAnchor(null)} />
     <TrackDetails track={data?.tracks.find(track => track.id === detailsId)} onClose={() => dispatch(uiActions.setDetails(null))} />
   </Box>;

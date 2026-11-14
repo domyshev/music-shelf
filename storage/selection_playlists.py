@@ -4,29 +4,24 @@ import re
 import tempfile
 from pathlib import Path
 
-SPOTIFY_ID = re.compile(r'^[A-Za-z0-9]{22}$')
 TAG_NAME = re.compile(r'^agent-[a-z0-9]+(?:\.[a-z0-9]+)*-[1-9][0-9]{0,3}$')
 TAG_ID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
 
 
-def reconcile(root, selections, jobs):
+def reconcile(root, selections, files):
     root = Path(root).resolve(strict=True)
     folder = root / 'MusicShelfPlaylists'
     folder.mkdir(mode=0o700, exist_ok=True)
     if folder.is_symlink() or not folder.is_dir():
         raise ValueError('Invalid playlist directory')
-    if not isinstance(selections, list) or not isinstance(jobs, list):
+    if not isinstance(selections, list) or not isinstance(files, dict):
         raise ValueError('Invalid synchronization data')
     verified = {}
-    for job in jobs:
-        if job.get('state') != 'completed':
-            continue
-        track_id = (job.get('track') or {}).get('spotify_id')
-        name = (job.get('result') or {}).get('file')
-        if not isinstance(track_id, str) or not SPOTIFY_ID.fullmatch(track_id) or not isinstance(name, str):
+    for track_id, name in files.items():
+        if not isinstance(track_id, str) or not isinstance(name, str):
             continue
         path = Path(name).resolve()
-        if path.is_file() and path.parent == root / track_id and not any(c in str(path) for c in '\r\n'):
+        if path.is_file() and path.is_relative_to(root) and not any(c in str(path) for c in '\r\n'):
             verified[track_id] = path
     written = 0
     for selection in selections:

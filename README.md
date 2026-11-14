@@ -18,9 +18,7 @@ artist and album names show arrowed card previews on hover or keyboard focus;
 clicking opens a persistent card. Names underline on hover without changing
 their color. Cards currently display the supplied name only.
 
-Music Shelf serves metadata only: it does not play, serve or download audio.
-An external publisher supplies full library snapshots through a signed API.
-The Node server stores the current catalog and history in SQLite.
+Music Shelf manages a music catalog and file imports. The Node server stores the catalog, account data and upload history in SQLite. Audio lives in a configurable music directory, which may be on another server. A storage worker initiates outbound signed HTTPS requests, verifies imported audio and confirms storage. Navidrome remains an independent music player pointed at that directory.
 
 ## Local development
 
@@ -64,7 +62,7 @@ environment variables take precedence.
 | `SHELF_ORIGIN` | Exact browser origin for authentication requests. Use the Vite origin in development and HTTPS in production. |
 | `SHELF_AUTH_SECRET_FILE` | Optional private file containing 64 random hexadecimal characters for code hashing. Defaults to a generated `auth.secret` beside SQLite. |
 | `SHELF_DB_PATH` | Persistent SQLite database path. |
-| `SHELF_PUBLISHER_PUBLIC_KEY_FILE` | PEM Ed25519 public key enabling signed imports. Without it, publishing is disabled. |
+| `SHELF_STORAGE_PUBLIC_KEY_FILE` | PEM Ed25519 public key authenticating the outbound storage worker. |
 | `SHELF_DEMO_MODE` | Set to `1` for synthetic catalogs to show a visible demo label. Never enable for the real library. |
 | `HOST`, `PORT` | Bind address and port. Defaults: `127.0.0.1`, `4174`. |
 
@@ -93,9 +91,7 @@ docker compose up --build -d
 
 The portable example binds `127.0.0.1:8080`, runs as an unprivileged user and
 persists SQLite in `shelf-data`. A separately configured HTTPS reverse proxy
-can expose it. To enable imports, mount the publisher's public key read-only
-and configure its container path. Keep the private signing key exclusively in
-the external publisher. The runtime has also been validated in an isolated Docker deployment.
+can expose it. To enable storage, mount the storage worker's public key read-only and configure its container path. Keep the private signing key exclusively on the music server. The runtime has also been validated in an isolated Docker deployment.
 
 ## API and history
 
@@ -107,9 +103,10 @@ calendar includes both selected days in the browser timezone, including daylight
 saving changes.
 
 See [the API contract](docs/api.md) and [synthetic example](examples/snapshot.json).
-Full snapshots replace the current catalog atomically and preserve history.
-Stable track IDs identify transitions. Exact retries are idempotent and stale
-snapshots are rejected.
+Verified storage registrations add files without replacing the existing catalog.
+Stable track IDs preserve links to account data. The legacy full-snapshot
+contract is retained for explicit migration tooling and is disabled by the
+normal server entry point.
 
 Actual source completion timestamps are retained when available. Existing files
 first seen without a completion time produce an import event, rather than an
@@ -147,8 +144,7 @@ no real library, audio, access codes, credentials, private keys or home
 infrastructure configuration. Runtime databases, local configuration and audio
 are ignored by Git and excluded from the container build context.
 
-Download-service APIs and the actual file/queue synchronization collector stay
-private. Deployment-specific proxy, DNS and network settings stay private too.
+Deployment-specific storage paths and private runtime data stay private. Deployment-specific proxy, DNS and network settings stay private too.
 Those services can publish the documented metadata without becoming part of
 this application's source code.
 
@@ -177,13 +173,77 @@ Assistant replies support Markdown, including lists and tables.
 
 ## Music assistant tools
 
-For tool-capable OpenRouter models, the assistant can query the library and
-history, search the local SpotiFLAC API, inspect its live queue, and edit the
-signed-in user's song texts by language. Queue additions are restricted to email
-addresses configured by `SHELF_QUEUE_USERS_FILE` (a private comma-separated file) or `SHELF_QUEUE_USERS`. An empty configuration denies queue additions. A Corgi-side worker initiates a
-signed connection to Music Shelf and performs only three allowed operations
-against the existing loopback SpotiFLAC API. The worker does not accept shell
-commands, output paths or arbitrary URLs. Models receive only the required tool
-results, and cannot directly access servers or credentials. The assistant instructions call for explicit requests before queue additions
-or lyric changes. Queue permissions are additionally enforced by the server.
-Model-generated statements should be verified against tool results.
+For tool-capable OpenRouter models, the assistant can query the catalog and
+history, inspect uploads, organize existing catalog tracks into selection tags,
+and edit the signed-in user's song texts. It cannot search external download
+providers, submit acquisition jobs or manage a downloader queue. Historical
+catalog records and events are retained. Pending legacy records are catalog
+metadata, not active download jobs.
+
+## Music imports and storage
+
+Open **Upload music** using the plus above the library or in the assistant input.
+The same dialog accepts drag and drop or file selection and shows upload history,
+archive contents, SHA-256 checksums, per-file results and downloadable JSON reports.
+Upload audio files together, or exactly one ZIP archive; do not mix the two.
+Requests are limited to 80 MiB; ZIP contents are limited to 1 GiB, 200 entries
+and 512 MiB per file. Unsafe paths, links, encrypted archives and checksum errors
+are rejected. Non-audio archive entries are reported as unsupported.
+
+Configure `SHELF_UPLOAD_USERS_FILE` (a private comma-separated account list) or
+`SHELF_UPLOAD_USERS` to permit imports. An empty list denies imports. Owners can
+create and revoke upload API keys in Settings. The server displays each random
+key once and stores only its SHA-256 digest. Keys permit uploads and report reads
+for their account; they cannot manage keys, edit lyrics or access storage-worker
+operations. See [the import API](docs/api.md#music-upload-api).
+
+`SHELF_UPLOAD_STAGING` defaults to `upload-staging` beside the database. Keep it
+on a persistent local disk. The server requires 1.5 GiB free before receiving an
+upload, serializes incoming requests and removes temporary bytes after confirmed
+delivery. Incomplete directories are recovered after restart. The initial report
+can say `staged`: the remote music server has not yet confirmed storage. Final
+reports say `complete`, `partial` or `failed`; individual files say `ready` or
+`failed`. Do not treat HTTP 202 as confirmed publication in Navidrome.
+
+Run [the storage worker](storage/worker.py) on the music server using Python 3,
+OpenSSL, FFmpeg and FFprobe. It can also run alongside the backend with a local
+mounted directory. Set:
+
+- `SHELF_SITE`: exact Music Shelf origin.
+- `SHELF_MUSIC_ROOT`: dedicated music directory.
+- `SHELF_STORAGE_STATE`: persistent worker manifest directory.
+- `SHELF_STORAGE_PRIVATE_KEY_FILE`: private Ed25519 key, kept on the music server.
+- `SHELF_FFMPEG`, `SHELF_FFPROBE`: executable paths if absent from PATH.
+
+Generate a storage-only key on that server with `openssl genpkey -algorithm
+ED25519 -out storage.key` and derive its public key with `openssl pkey -in
+storage.key -pubout -out storage.pub`. Provision only `storage.pub` to the backend
+and configure `SHELF_STORAGE_PUBLIC_KEY_FILE`. Protect the private key and state
+with owner-only permissions. The worker uses timestamped, path-bound signatures
+and unique nonces; the server persists replay protection. No incoming connection
+to the music server, remote shell command, destination path or arbitrary URL is
+accepted from the backend. Keep existing DMZ-to-LAN restrictions in place.
+
+The worker checks file size, SHA-256, audio metadata and full decoding before
+confirming delivery. Acquisitions from third-party music services are not part of
+this application. A systemd example is in
+[storage/music-shelf-storage.service](storage/music-shelf-storage.service); adapt
+its account and paths for your installation. The example hides the rest of the
+user's home directory from the worker and limits its writable paths.
+
+The worker scans existing audio without deleting catalog entries. Matching
+checksums reuse existing track IDs so lyrics and selection tags retain their
+links. New files receive content-based IDs. Original audio and account data must
+be backed up independently. Storage confirmations are idempotent, allowing a
+worker to retry safely after interruption. Navidrome scans the verified music
+folder independently; confirmed storage is distinct from its next library scan.
+
+
+For a portable Docker deployment with local storage, generate the key pair in
+`local/storage-auth`, configure the public key path inside the app as
+`/run/storage-auth/storage.pub`, and set `SHELF_MUSIC_PATH` to the host music
+folder. `docker compose --profile storage up --build -d` starts the optional
+worker beside the app. Give the worker's configured UID write permission to
+that folder. For remote storage, run only the app on the web server and deploy
+the worker separately with its private key; provision only the public key on
+the web server. Never mount the private storage key into the web app.

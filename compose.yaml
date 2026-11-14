@@ -8,8 +8,11 @@ services:
       SHELF_ORIGIN: ${SHELF_ORIGIN:?Set the exact public HTTPS origin}
       RESEND_API_KEY: ${RESEND_API_KEY:?Set a private Resend API key}
       EMAIL_FROM: ${EMAIL_FROM:?Set a verified sender address}
+      SHELF_UPLOAD_USERS: ${SHELF_UPLOAD_USERS:-}
+      SHELF_STORAGE_PUBLIC_KEY_FILE: /run/storage-auth/storage.pub
     volumes:
       - shelf-data:/data
+      - ./local/storage-auth/storage.pub:/run/storage-auth/storage.pub:ro
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777
@@ -17,5 +20,27 @@ services:
     security_opt: [no-new-privileges:true]
     pids_limit: 64
     mem_limit: 256m
+  storage:
+    profiles: [storage]
+    build:
+      context: ./storage
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    user: '${SHELF_STORAGE_UID:-1000}:${SHELF_STORAGE_GID:-1000}'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    pids_limit: 32
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    environment:
+      SHELF_SITE: http://music-shelf:8080
+      SHELF_MUSIC_ROOT: /music
+      SHELF_STORAGE_STATE: /music/.shelf-state
+      SHELF_STORAGE_PRIVATE_KEY_FILE: /run/storage.key
+    volumes:
+      - ${SHELF_MUSIC_PATH:-./music}:/music
+      - ./local/storage-auth/storage.key:/run/storage.key:ro
 volumes:
   shelf-data:

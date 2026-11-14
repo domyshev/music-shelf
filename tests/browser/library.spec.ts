@@ -32,8 +32,8 @@ test.beforeEach(async ({ page }) => {
 test('shows account, theme, settings and version in the application menu',async({page})=>{
  await page.getByRole('button',{name:'Open menu'}).click();
  const menu=page.getByRole('menu');await expect(menu.getByText('Theme:')).toBeVisible();await expect(menu.getByText('test@example.invalid')).toBeVisible();
- await expect(menu.getByText('0.2.38')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
- await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.2.38');
+ await expect(menu.getByText('0.3.0')).toBeVisible();await expect(menu.getByRole('menuitem',{name:'Settings'})).toBeVisible();
+ await menu.getByRole('menuitem',{name:/About/}).click();await expect(page.getByRole('dialog',{name:'About Music Shelf'})).toContainText('0.3.0');
 });
 test('marks overlapping translated phrases and supports quick AI translation',async({page})=>{
  await page.route('**/api/tracks/*/text',route=>route.fulfill({json:{originalLanguage:'es',texts:{es:'> Gracias a la vida\n> Gracias a la vida',ru:'',en:''}}}));
@@ -431,13 +431,24 @@ test('shows attempt counts and remembers visible columns',async({page})=>{
  await page.getByRole('button',{name:'Choose columns'}).click();await page.getByRole('button',{name:'Downloaded at',exact:true}).click();await page.keyboard.press('Escape');await page.reload();await expect(table.getByRole('columnheader',{name:'Downloaded at'})).toHaveCount(0);
 });
 
-test('edits persistent owner download settings',async({page})=>{
- let setting={enabled:true,maxAttempts:100,canEdit:true};
- await page.route('**/api/download/settings',route=>{if(route.request().method()==='PUT')setting={...setting,...route.request().postDataJSON()};return route.fulfill({json:setting});});
- await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('menuitem',{name:'Settings'}).click();const dialog=page.getByRole('dialog',{name:'Settings'});const toggle=dialog.getByRole('switch',{name:'Automatically stop retrying'}),limit=dialog.getByLabel('Attempt limit');await expect(toggle).toBeChecked();await expect(limit).toHaveValue('100');await toggle.uncheck();await expect(limit).toBeDisabled();await dialog.getByRole('button',{name:'Save',exact:true}).click();await expect(dialog.getByText('Saved')).toBeVisible();await dialog.getByRole('button',{name:'Close'}).click();await page.getByRole('button',{name:'Open menu'}).click();await page.getByRole('menuitem',{name:'Settings'}).click();await expect(toggle).not.toBeChecked();await expect(limit).toBeDisabled();await toggle.check();await limit.fill('125');await dialog.getByRole('button',{name:'Save',exact:true}).click();await expect(dialog.getByText('Saved')).toBeVisible();expect(setting).toMatchObject({enabled:true,maxAttempts:125});
-});
 
 test('reports an HTML proxy error without exposing JSON parsing errors or replaying the request',async({page})=>{
  let sent=0;await page.route('**/api/ai/settings',route=>route.fulfill({json:{model:'demo/model',hasToken:true}}));await page.route('**/api/ai/chat/history*',route=>route.fulfill({json:{turns:[],nextBefore:null}}));await page.route('**/api/ai/chat',route=>{sent++;return route.fulfill({status:504,contentType:'text/html',body:'<!DOCTYPE html><html><body>Gateway timeout</body></html>'});});
  await page.getByRole('button',{name:'AI assistant',exact:true}).click();await page.getByLabel('Message AI').fill('Find songs');await page.getByRole('button',{name:'Send',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Unexpected server response (HTTP 504)');await expect(page.getByRole('alert')).not.toContainText('Unexpected token');expect(sent).toBe(1);await expect(page.getByLabel('Message AI')).toHaveValue('');
+});
+
+
+test('upload form is shared by the library and assistant and rejects mixed input',async({page})=>{
+ await page.route('**/api/uploads',route=>route.fulfill({json:{uploads:[]}}));
+ await page.getByRole('button',{name:'Upload music',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Upload music',exact:true});
+ await expect(dialog.getByText('Upload history')).toBeVisible();
+ await dialog.locator('input[type=file]').setInputFiles([{name:'song.flac',mimeType:'audio/flac',buffer:Buffer.from('test')},{name:'songs.zip',mimeType:'application/zip',buffer:Buffer.from('test')}]);
+ await expect(dialog.getByRole('alert')).toContainText('Do not mix');
+ await expect(dialog.getByRole('button',{name:'Upload',exact:true})).toBeDisabled();
+ await dialog.getByRole('button',{name:'Close',exact:true}).click();
+ await page.route('**/api/ai/chat/history',route=>route.fulfill({json:{turns:[],nextBefore:null}}));
+ await page.getByRole('button',{name:'AI assistant',exact:true}).click();
+ await page.getByRole('button',{name:'Upload music',exact:true}).last().click();
+ await expect(page.getByRole('dialog',{name:'Upload music',exact:true})).toBeVisible();
 });

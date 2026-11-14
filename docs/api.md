@@ -1,8 +1,6 @@
 # Catalog API
 
-All endpoints are same-origin. Responses use JSON. Reading requires an authenticated session cookie. Publishing uses a separate
-signature.
-No endpoint accepts audio or private file paths.
+Browser APIs use same-origin session cookies. Upload clients can use scoped API keys, and the storage worker uses signed requests. Responses use JSON except the authenticated storage file stream. Music upload endpoints accept audio and ZIP files; no endpoint accepts a server output path or an external acquisition URL.
 
 ## Read endpoints
 
@@ -19,7 +17,13 @@ events arrive. Reopen history from the first page to see new or corrected events
 Invalid pagination returns 400. Unauthenticated reads return 401. Email-code request throttling returns 429
 with Retry-After; its network limit uses the direct peer IP.
 
-## Publish a snapshot
+## Legacy snapshot import
+
+The normal application entry point disables this endpoint. It is retained as an
+explicit opt-in for migration tools using `createApp({publisherKey})`; the new
+storage worker registers verified files incrementally and does not replace the
+catalog. Do not enable snapshot replacement alongside active storage imports.
+
 
 `POST /api/import` accepts a full JSON snapshot, up to 8 MiB and 10,000 tracks.
 Configure the server with the publisher's PEM Ed25519 public key. The matching
@@ -192,3 +196,56 @@ the user’s token. Request IDs are idempotent; concurrent turns for one account
 are rejected. Interrupted turns are not automatically replayed.
 Chat calls may incur provider costs. These endpoints require authentication;
 mutations also require the configured origin.
+
+
+## Music upload API
+
+Owners are configured by `SHELF_UPLOAD_USERS` or `SHELF_UPLOAD_USERS_FILE`.
+A signed-in owner can manage credentials using `GET /api/upload-keys`,
+`POST /api/upload-keys` with JSON `{"name":"My agent"}`, and
+`DELETE /api/upload-keys/:id`. Mutations require the exact browser Origin.
+Creation returns a random `token` once. Only a digest is persisted. Revocation
+is immediate. A key is limited to uploads and report reads for its account.
+
+`POST /api/uploads` accepts `multipart/form-data` with repeated `files` fields.
+Send `Authorization: Bearer <upload-key>`, or use an owner's browser session
+with the configured Origin. Supply audio files or a single ZIP; mixing is rejected.
+The request limit is 80 MiB. The server hashes original files and the ZIP itself;
+archive contents retain their relative paths, file sizes and individual hashes.
+SHA-256 identifies content, so duplicate bytes share a hash. Each request receives
+a distinct UUID in `id`. Unsupported archive entries are reported as failed.
+
+```sh
+curl --fail-with-body -H "Authorization: Bearer $SHELF_UPLOAD_KEY"   -F 'files=@song.flac' 'https://your-shelf.example/api/uploads?wait=30'
+```
+
+`wait` is optional, from 0 to 30 seconds. While remote storage is pending the
+response is HTTP 202 with `status: "staged"` and `success: null`. If confirmation
+arrives during the wait, the response is HTTP 200 with a final report. Read
+`GET /api/uploads/:id` to poll or `GET /api/uploads` for the newest 100 reports.
+Both accept the same upload key or owner session. Other accounts cannot read a
+report. Browser history and the agent's `upload_history` tool use these reports.
+
+A report contains `id`, `createdAt`, `kind` (`archive` or `files`), `status`,
+`success` and `files`. Each file includes `name`, `sizeBytes`, `sha256`, `status`,
+`success`, and, when confirmed, `trackId`; failed files include an error code.
+ZIP uploads additionally include `archive` with the original archive's checksum.
+Final overall statuses are `complete`, `partial` and `failed`; per-file statuses
+are `ready` or `failed`. Confirmed storage does not promise Navidrome has already
+completed its next scan. Malformed or unsafe requests fail with HTTP 400 before
+being queued. No API accepts external download URLs or music acquisition jobs.
+
+### Storage worker protocol
+
+Only the worker's configured Ed25519 public key authorizes `POST` requests to
+`/api/storage/poll`, `/api/storage/file`, `/api/storage/complete` and
+`/api/storage/register`. Sign `timestamp + "\n" + path + "\n" + raw JSON bytes`
+and send `X-Shelf-Timestamp` and base64 `X-Shelf-Signature`. Bodies include a fresh
+32-character hexadecimal `nonce`. Timestamp tolerance is 120 seconds; nonces are
+persisted and cannot be replayed. Upload API keys do not authorize these routes.
+The supplied worker implements this protocol. Existing catalog entries are
+retained and identical audio hashes reuse their original identifiers.
+
+The removed downloader routes `/api/bridge/*` and `/api/download/settings` return
+HTTP 404. The assistant no longer exposes music-provider search, acquisition,
+queue or retry-setting tools.

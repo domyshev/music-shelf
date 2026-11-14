@@ -25,6 +25,22 @@ export class CatalogStore {
       }
     }
   }
+  registerFile(track: Track) {
+    if(track.status!=='ready'||!track.file)throw new Error('A verified file is required');
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const existing=this.db.prepare("SELECT id,payload FROM tracks WHERE json_extract(payload,'$.file.sha256')=? ORDER BY position LIMIT 1").get(track.file.sha256) as {id:string;payload:string}|undefined;
+      if(existing){this.db.exec('COMMIT');return existing.id;}
+      const conflict=this.db.prepare('SELECT payload FROM tracks WHERE id=?').get(track.id) as {payload:string}|undefined;
+      if(conflict && JSON.parse(conflict.payload).file?.sha256!==track.file.sha256)throw new Error('Track identity conflict');
+      const position=(this.db.prepare('SELECT COALESCE(MAX(position),-1)+1 AS n FROM tracks').get() as {n:number}).n;
+      this.db.prepare('INSERT INTO tracks(id,position,payload,search_text) VALUES(?,?,?,?)').run(track.id,position,JSON.stringify(track),this.searchText(track));
+      const now=new Date().toISOString();
+      this.addEvent(`file:${track.id}:${track.file.sha256}`,track,'imported',now,'import');
+      this.db.prepare("INSERT INTO metadata(key,value) VALUES('generatedAt',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(now);
+      this.db.exec('COMMIT');return track.id;
+    }catch(error){this.db.exec('ROLLBACK');throw error;}
+  }
   private searchText(track: Track) { return normalizeSearch([track.title, track.artist, track.album, track.year ?? '', track.status].join(' ')); }
   close() { this.db.close(); }
   catalog(): CatalogResponse {
