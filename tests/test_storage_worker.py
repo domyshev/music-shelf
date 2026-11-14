@@ -3,6 +3,7 @@ import importlib.util
 import io
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -35,6 +36,25 @@ class StorageWorkerTests(unittest.TestCase):
                 self.assertEqual(request.call_count, 1)
                 self.assertEqual((root/'Imports'/upload['id']/'0.flac').read_bytes(), b'good')
                 self.assertTrue(send.call_args[0][1]['results'][0]['ok'])
+
+    def test_library_rules_hide_unverified_siblings(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            state = root/'.state'
+            state.mkdir()
+            (root/'Album').mkdir()
+            (root/'Album/good.flac').write_bytes(b'good')
+            (root/'Album/bad.flac').write_bytes(b'bad')
+            def probe(path):
+                if path.name == 'bad.flac':
+                    raise ValueError('Invalid audio')
+                return {'id': 'verified'}
+            with patch.object(worker, 'ROOT', root), patch.object(worker, 'STATE', state), patch.object(worker, 'probe', side_effect=probe), patch.object(worker, 'send', return_value={'id': 'verified'}):
+                worker.scan()
+            subprocess.run(['git', '-C', str(root), 'init', '-q'], check=True)
+            (root/'.gitignore').write_text((root/'.ndignore').read_text())
+            self.assertEqual(subprocess.run(['git', '-C', str(root), 'check-ignore', '--no-index', 'Album/good.flac'], capture_output=True).returncode, 1)
+            self.assertEqual(subprocess.run(['git', '-C', str(root), 'check-ignore', '--no-index', 'Album/bad.flac'], capture_output=True).returncode, 0)
 
     def test_symlink_destination_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

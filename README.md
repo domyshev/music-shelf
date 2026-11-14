@@ -228,8 +228,9 @@ The worker checks file size, SHA-256, audio metadata and full decoding before
 confirming delivery. Acquisitions from third-party music services are not part of
 this application. A systemd example is in
 [storage/music-shelf-storage.service](storage/music-shelf-storage.service); adapt
-its account and paths for your installation. The example hides the rest of the
-user's home directory from the worker and limits its writable paths.
+its account and paths for your installation. The example runs under a dedicated account, hides home directories and limits
+its writable paths. Adapt its directory ownership and environment configuration
+to your deployment.
 
 The worker scans existing audio without deleting catalog entries. Matching
 checksums reuse existing track IDs so lyrics and selection tags retain their

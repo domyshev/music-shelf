@@ -1,0 +1,14 @@
+import {readFileSync,writeFileSync} from 'node:fs';
+import {createPublicKey} from 'node:crypto';
+import {CatalogStore} from './dist/runtime/server/store.js';
+import {EmailAuth} from './dist/runtime/server/auth.js';
+import {UploadKeys} from './dist/runtime/server/upload-keys.js';
+import {Uploads} from './dist/runtime/server/uploads.js';
+import {StorageAuth} from './dist/runtime/server/storage-auth.js';
+import {createApp} from './dist/runtime/server/http.js';
+const database='/data/test.sqlite',store=new CatalogStore(database),auth=new EmailAuth(database,Buffer.alloc(32,1)),keys=new UploadKeys(database),uploads=new Uploads(database,'/data/staging');
+await uploads.recover();
+const key=keys.create('test@example.invalid','Isolated verification');
+writeFileSync('/data/test-token',key.token,{mode:0o600});
+const storageAuth=new StorageAuth(database,createPublicKey(readFileSync('/data/storage.pub')));
+createApp({store,auth,uploadKeys:keys,uploads,storageAuth,uploadUsers:['test@example.invalid'],origin:'http://test.invalid',mailer:{async send(){throw new Error('Disabled in isolated verification');}},clientDirectory:'/not-present'}).listen(8080,'0.0.0.0');

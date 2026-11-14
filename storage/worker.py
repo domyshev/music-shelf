@@ -189,7 +189,7 @@ def scan():
         for end in range(1, len(parts)):
             allowed.add('!/'+'/'.join(parts[:end])+'/')
         allowed.add('!/'+relative)
-    rules = '# Managed by Music Shelf storage worker.\n/*\n'+'\n'.join(sorted(allowed))+'\n'
+    rules = '# Managed by Music Shelf storage worker.\n/**\n'+'\n'.join(sorted(allowed))+'\n'
     temp = ROOT/'.ndignore.tmp'
     temp.write_text(rules)
     os.replace(temp, ROOT/'.ndignore')
